@@ -9,9 +9,10 @@ GROUP_SPACE = r"[ \u00a0\u2009\u202f]"
 NUMBER = re.compile(rf"(?<![\w.,+−-])([+−-]?[0-9]+(?:(?:[.,]|{GROUP_SPACE}+)[0-9]+)*)")
 NUMBER_FORMAT = re.compile(rf"[+−-]?(?:[0-9]+|[0-9]{{1,3}}(?:{GROUP_SPACE}[0-9]{{3}})+)(?:[.,][0-9]+)?")
 GROUP_SEPARATOR = re.compile(GROUP_SPACE)
+COMPOUND_UNIT_COMPONENT = r"(?:h|heures?|min|minutes?|s|secondes?|km|kilom[èe]tres?|m|m[èe]tres?|j|jours?|semaines?|mois|ans?)"
 COMPOUND_UNIT_TAIL = re.compile(
-    r"\s*[/⁄∕·⋅*^²³⁻]|\s+par\s+"
-    r"(?:h|heures?|min|minutes?|s|secondes?|km|kilom[èe]tres?|m|m[èe]tres?|j|jours?|semaines?|mois|ans?)\b",
+    rf"\s*[/⁄∕·⋅*^²³⁻]|\s+par\s+{COMPOUND_UNIT_COMPONENT}\b"
+    rf"|\s+{COMPOUND_UNIT_COMPONENT}\s*⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+",
     re.IGNORECASE,
 )
 UNIT_PATTERNS = {
@@ -26,6 +27,11 @@ UNIT_PATTERNS = {
 }
 UNITS = [(key, re.compile(rf"\s*(?:{expression})\b", re.IGNORECASE))
          for key, expression in UNIT_PATTERNS.items()]
+ALTERNATIVE = re.compile(r"\s+ou\s+", re.IGNORECASE)
+FIELD_LABEL = re.compile(
+    r"\b(?:(?P<duration>dur[ée]e)|(?P<distance>distance(?:\s+parcourue)?)|(?P<load>charge))\s*:?\s*$",
+    re.IGNORECASE,
+)
 ACTIVITIES = {
     "running": r"\b(?:course|couru)\b",
     "cycling": r"\b(?:vélo|velo|cyclisme|bicyclette)\b",
@@ -33,14 +39,14 @@ ACTIVITIES = {
     "mobility": r"\bmobilit[ée]\b",
 }
 UNRESOLVED_FIELDS = {
-    "duration": r"\b(?:dur[ée]e\s*:?|pendant)\s*$",
-    "distance": r"\b(?:distance(?:\s+parcourue)?|couru|course(?:\s+à\s+pied)?)\s*:?\s*$",
-    "load": r"\b(?:charge\s*:?|(?:r[ée]p[ée]titions?|reps?)\s*,?\s+à)\s*$",
+    "duration": r"\bpendant\s*$",
+    "distance": r"\b(?:couru|course(?:\s+à\s+pied)?)\s*:?\s*$",
+    "load": r"\b(?:r[ée]p[ée]titions?|reps?)\s*,?\s+à\s*$",
 }
 NEGATED = re.compile(r"\b(?:pas|ni|au lieu de)\s*$", re.IGNORECASE)
 
 
-def measure(text, number, source):
+def measure(text, number, source, next_duration_start):
     prefix = text[:number.start()]
     if NEGATED.search(prefix):
         return None
@@ -54,8 +60,13 @@ def measure(text, number, source):
                 return None
             break
     if field is None:
-        field = next((dimension for dimension, pattern in UNRESOLVED_FIELDS.items()
-                      if re.search(pattern, prefix, re.IGNORECASE)), None)
+        if label := FIELD_LABEL.search(prefix):
+            field = label.lastgroup
+        elif next_duration_start is not None and ALTERNATIVE.fullmatch(text, end, next_duration_start):
+            field = "duration"
+        else:
+            field = next((dimension for dimension, pattern in UNRESOLVED_FIELDS.items()
+                          if re.search(pattern, prefix, re.IGNORECASE)), None)
     if field is None or not NUMBER_FORMAT.fullmatch(number[1]):
         return None
     normalized = GROUP_SEPARATOR.sub("", number[1]).replace(",", ".").replace("−", "-")
@@ -73,6 +84,14 @@ def measure(text, number, source):
 def workout_mention(entry_id, revision, text):
     activities = [activity for activity, pattern in ACTIVITIES.items() if re.search(pattern, text, re.IGNORECASE)]
     source = {"kind": "user_declaration", "input_id": entry_id, "input_revision": revision, "text": text}
-    measures = [item for number in NUMBER.finditer(text) if (item := measure(text, number, source)) is not None]
+    measures = []
+    next_duration_start = None
+    # The written duration on the right can classify each adjacent bare choice.
+    for number in reversed(list(NUMBER.finditer(text))):
+        item = measure(text, number, source, next_duration_start)
+        next_duration_start = number.start() if item is not None and item["id"] == "duration" else None
+        if item is not None:
+            measures.append(item)
+    measures.reverse()
     return {"mention_id": "s1", "text": text, "activity": activities[0] if len(activities) == 1 else None,
             "source": source, "measures": measures}

@@ -125,11 +125,7 @@ def verify_workouts(db, port):
     result = saved(db, port, s07, "squat")
     known(result, "total_repetitions", 30, "count", s07, "3 séries", "10 répétitions")
     assert unresolved(result, "load", 40, s07, "40") == "Dans quelle unité est exprimée la charge de 40 ?"
-    alternatives = body("T07-ALTERNATIVES", "Vélo : 20 minutes ou 30 minutes.")
-    result = saved(db, port, alternatives, "cycling")
-    assert result["summary"]["duration"]["value"] is None and len(result["measures"]) == 2
-    assert [q["field"] for q in result["clarifications"]] == ["duration"]
-    print("PASS S05/S07 et alternatives : inconnues conservées et une question par séance ; POST/GET/SQL")
+    print("PASS S05/S07 : inconnues conservées et une question par séance ; POST/GET/SQL")
 
     refused(db, port, body("T07-S08", cases["S08"]["input"]), 400, "negative_duration")
     refused(db, port, body("T07-INPUT-DIMENSION", "Course : distance 5 kg, durée 30 min."), 400,
@@ -148,16 +144,77 @@ def verify_faults(db, port):
           "HTTP 502, aucune écriture")
 
 
+def duration_choice(result, entry, branches):
+    row = result["summary"]["duration"]
+    assert (row["status"], row["value"], row["unit"]) == ("unresolved", None, None), row
+    measures = [measure for measure in result["measures"] if measure["id"] == "duration"]
+    assert measures == [
+        {"id": "duration", "value": value, "unit": unit, "source": source(entry, fragment)}
+        for value, unit, fragment in branches], measures
+    assert row["sources"] == [source(entry, fragment) for _, _, fragment in branches]
+    assert result["clarifications"] == [{
+        "field": "duration", "reason": "other", "question": "Quelle durée faut-il retenir pour la séance ?",
+    }]
+
+
+def verify_duration_alternatives(db, port):
+    alternatives = (
+        ("SHARED", "cycling", "Vélo : 20 ou 30 minutes.", ((20, None, "20"), (30, "min", "30 minutes"))),
+        ("RUN", "running", "J’ai couru 20 ou 30 minutes.", ((20, None, "20"), (30, "min", "30 minutes"))),
+        ("CHAIN", "cycling", "Vélo : 10 ou 20 ou 30 minutes.",
+         ((10, None, "10"), (20, None, "20"), (30, "min", "30 minutes"))),
+        ("REPEATED", "cycling", "Vélo : 20 minutes ou 30 minutes.",
+         ((20, "min", "20 minutes"), (30, "min", "30 minutes"))),
+        ("DECIMAL", "cycling", "Vélo : 20,5\u202fou\u00a030,5\u202fmin.",
+         ((20.5, None, "20,5"), (30.5, "min", "30,5\u202fmin"))),
+    )
+    for suffix, activity, declaration, branches in alternatives:
+        entry = body(f"T07-ALTERNATIVES-{suffix}", declaration)
+        result = saved(db, port, entry, activity)
+        duration_choice(result, entry, branches)
+        assert len(result["measures"]) == len(branches)
+        absent(result, "distance")
+        absent(result, "load")
+    print("PASS alternatives de durée : chaque branche ancrée, durée indéterminée et une question de choix ; POST/GET/SQL")
+
+    entry = body("T07-DISTANCE-WITH-DURATION-CHOICE", "Vélo : 20 km en 30 ou 45 min.")
+    result = saved(db, port, entry, "cycling")
+    known(result, "distance", 20000, "m", entry, "20 km")
+    duration_choice(result, entry, ((30, None, "30"), (45, "min", "45 min")))
+    print("PASS distance déclarée et choix de durée : 20 000 m et une seule question ; POST/GET/SQL")
+
+    for suffix, start, unit, fragment in (("UNIT", "20 km", "km", "20 km"), ("LABEL", "distance 20", None, "20")):
+        entry = body(f"T07-ALTERNATIVES-DISTANCE-{suffix}", f"Vélo : {start} ou 30 min.")
+        result = saved(db, port, entry, "cycling")
+        assert result["measures"] == [
+            {"id": "distance", "value": 20, "unit": unit, "source": source(entry, fragment)},
+            {"id": "duration", "value": 30, "unit": "min", "source": source(entry, "30 min")},
+        ]
+    print("PASS dimension explicite : nature et source des mesures candidates conservées ; POST/GET/SQL")
+
+
 def verify_measure_notation(db, port):
-    units = ("km/h", "km / h", "m/s", "m / s", "min/km", "min / km", "km par heure")
-    for i, unit in enumerate(units, 1):
-        entry = body(f"T07-COMPOUND-{i}", f"Vélo à 20 {unit} pendant 30 min.")
+    rates = (
+        "20 km h⁻¹", "20,5\u202fkm\u00a0h⁻¹",
+        "20 km/h", "20 km / h", "20 m/s", "20 m / s", "20 min/km", "20 min / km", "20 km par heure",
+        "20 ou 30 min/km",
+    )
+    for i, rate in enumerate(rates, 1):
+        entry = body(f"T07-COMPOUND-{i}", f"Vélo à {rate} pendant 30 min.")
         result = saved(db, port, entry, "cycling")
         known(result, "duration", 30, "min", entry, "30 min")
         absent(result, "distance")
         assert result["measures"] == [
             {"id": "duration", "value": 30, "unit": "min", "source": source(entry, "30 min")}]
+        assert result["clarifications"] == []
     print("PASS vitesse et allure, avec ou sans espaces : 30 min seules, unités composées laissées dans le texte ; POST/GET/SQL")
+
+    entry = body("T07-EXPLICIT-DISTANCE-AND-DURATION", "Vélo : 20 km en 1 h 30 min.")
+    result = saved(db, port, entry, "cycling")
+    known(result, "distance", 20000, "m", entry, "20 km")
+    known(result, "duration", 90, "min", entry, "1 h", "30 min")
+    assert result["clarifications"] == []
+    print("PASS distance suivie d’une durée composée : 20 000 m et 90 min ; POST/GET/SQL")
 
     grouped = (("1 000", 1000), ("1\u202f250", 1250), ("1\u00a0250", 1250), ("1\u202f234\u202f567,25", 1234567.25))
     for i, (written, value) in enumerate(grouped, 1):
@@ -176,6 +233,7 @@ def verify():
     with journal_db() as (_, db), java_service(db) as (port, python_port, logs):
         with running(uvicorn("app:app", "python", python_port), python_port, logs / "python.log"):
             verify_workouts(db, port)
+            verify_duration_alternatives(db, port)
             verify_measure_notation(db, port)
         with running(uvicorn("t07_faults:app", "scripts", python_port), python_port, logs / "faults.log"):
             verify_faults(db, port)
