@@ -27,7 +27,8 @@ final class MealCalculator {
     private static final Pattern DISPLAY = Pattern.compile("[.!?]\\s*affiche\\b[^.!?]*[.!?]?\\s*$", FR);
     private static final Pattern SPLIT = Pattern.compile("(?<![0-9]),|,(?![0-9])|;|\\s+et\\s+", FR);
     private static final Pattern MASS = Pattern.compile(
-            "^([+-]?[0-9]+(?:[.,][0-9]+)?)\\s*(kg|g|ml|l|portions?)?(?![\\p{L}0-9.,])\\s*", FR);
+            "^(?:([+-]?[0-9]+(?:[.,][0-9]+)?)\\s*(kg|g|ml|l|portions?|bols?)?|un\\s+bol)"
+                    + "(?![\\p{L}0-9.,])\\s*", FR);
     private static final Pattern STATED_STATES = Pattern.compile("\\b(cuit(?:e)?s?|cru(?:e)?s?)\\b", FR);
     private static final Pattern STATE = Pattern.compile("\\s+(cuit(?:e)?s?|cru(?:e)?s?)$", FR);
     private static final Pattern FOOD_ID = Pattern.compile("\\s+de la fiche ([\\w.:-]+)$", FR);
@@ -39,6 +40,10 @@ final class MealCalculator {
 
     static final class InvalidCorrection extends IllegalArgumentException {
         InvalidCorrection() { super("invalid_correction"); }
+    }
+
+    static final class NegativeQuantity extends IllegalArgumentException {
+        NegativeQuantity() { super("negative_quantity"); }
     }
 
     private record Food(String id, String label, String state, BigDecimal basis, Map<String, BigDecimal> values) {}
@@ -124,14 +129,19 @@ final class MealCalculator {
         BigDecimal value = null;
         String unit = null;
         if (amount.find()) {
-            value = new BigDecimal(amount.group(1).replace(',', '.'));
-            unit = amount.group(2);
-            if (unit != null) unit = unit.toLowerCase(Locale.ROOT).replace("portions", "portion");
+            String number = amount.group(1);
+            value = number == null ? BigDecimal.ONE : new BigDecimal(number.replace(',', '.'));
+            if (value.signum() < 0) throw new NegativeQuantity();
+            unit = number == null ? "portion" : amount.group(2);
+            if (unit != null) {
+                unit = unit.toLowerCase(Locale.ROOT);
+                if (unit.equals("portions") || unit.equals("bol") || unit.equals("bols")) unit = "portion";
+            }
             wording = wording.substring(amount.end());
         }
         JsonNode quantity = mention.path("quantity");
         if (!quantity.isNull()) {
-            check(value != null && value.signum() >= 0 && unit != null && quantity.isObject()
+            check(value != null && unit != null && quantity.isObject()
                     && unit.equals(quantity.path("unit").textValue())
                     && value.compareTo(quantity.path("value").decimalValue()) == 0
                     && source.equals(quantity.path("source")));
@@ -182,7 +192,7 @@ final class MealCalculator {
         if (matching.isEmpty()) missing = "food_unresolved";
         else if (state.equals("unknown")) missing = "raw_cooked_unknown";
         else if (food == null) missing = "food_unresolved";
-        else if (value == null || value.signum() < 0) missing = "quantity_absent";
+        else if (value == null) missing = "quantity_absent";
         else if (unit == null) missing = "unit_absent";
         else if (quantity.isNull()) missing = "quantity_absent";
         else if (unit.equals("portion")) missing = "portion_mass_unknown";

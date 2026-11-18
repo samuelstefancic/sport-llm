@@ -24,15 +24,17 @@ logger = logging.getLogger("uvicorn.error")
 # Virgule décimale française dans « 12,5 g » ou séparateur entre deux aliments.
 FOOD_SEPARATOR = re.compile(r"\s+et\s+|;|(?<!\d),|,(?!\d)", re.IGNORECASE)
 DISPLAY_SUFFIX = re.compile(r"[.!?]\s*affiche\b[^.!?]*[.!?]?\s*$", re.IGNORECASE)
-AMOUNT = re.compile(r"^([+-]?\d+(?:[.,]\d+)?)\s*(kg|g|ml|l|portions?)\b", re.IGNORECASE)
+AMOUNT = re.compile(r"^(?:([+-]?\d+(?:[.,]\d+)?)\s*(kg|g|ml|l|portions?|bols?)|un\s+bol)\b", re.IGNORECASE)
 STATES = re.compile(r"\b(cru(?:e)?s?|cuit(?:e)?s?)\b", re.IGNORECASE)
 
 
 def declared_quantity(fragment, source):
     match = AMOUNT.match(fragment)
     if match:
-        number = Decimal(match[1].replace(",", "."))
-        unit = match[2].lower().removesuffix("s")
+        number = Decimal(match[1].replace(",", ".")) if match[1] else Decimal(1)
+        unit = match[2].lower().removesuffix("s") if match[2] else "portion"
+        if unit == "bol":
+            unit = "portion"
         if number >= 0:
             value = int(number) if number == number.to_integral_value() else float(number)
             # Seuls les nombres conservés exactement par le sérialiseur JSON sont proposés.

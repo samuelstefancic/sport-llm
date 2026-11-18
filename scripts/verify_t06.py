@@ -71,9 +71,9 @@ def check_oracle(db, port, meal, oracle_name):
 def verify():
     with journal_db() as (dsn, db), java_service(db) as (port, python_port, logs):
         with running(uvicorn("app:app", "python", python_port), python_port, logs / "python.log"):
-            cases = read(ROOT / "data/dev/cases.json")["cases"]
+            cases = {case["id"]: case["input"] for case in read(ROOT / "data/dev/cases.json")["cases"]}
             f02 = {"entry_id": "T06-F02", "entry_revision": 1,
-                   "text": next(case["input"] for case in cases if case["id"] == "F02")}
+                   "text": cases["F02"]}
             original = check_oracle(db, port, f02, "java-macros-complete.json")
             print("PASS F02 : 415 kcal, 42,5 g, 46 g, 4,3 g ; références 0.2.0 ; POST/GET/SQL")
 
@@ -84,11 +84,36 @@ def verify():
                        for row in unknown["report"]["nutrients"])
             print("PASS quantité absente : clarification et résultats indéterminés")
 
+            bowl = {**f02, "entry_id": "T06-F07", "text": cases["F07"]}
+            proposal = request(port, "POST", "/analysis", bowl)
+            mention, = proposal["food_mentions"]
+            assert (mention["quantity"]["value"], mention["quantity"]["unit"]) == (1, "portion")
+            result = request(port, "POST", "/meals", {**bowl, "selected_nutrients": ["protein"]})
+            protein, = result["report"]["nutrients"]
+            gap, = protein["missing"]
+            question, = result["clarifications"]
+            assert (protein["value"], protein["status"], protein["provenance"]) == (None, "indéterminé", [])
+            assert gap["source"]["text"] == "Un bol de riz cuit"
+            assert gap["reason"] == question["reason"] == "portion_mass_unknown"
+            assert question["field"] == "quantity" and "grammes" in question["question"]
+            assert persisted(db, "meal", bowl["entry_id"], 1) == result
+            assert request(port, "GET", "/meals/T06-F07/revisions/1") == result
+            print("PASS F07 : bol déclaré conservé, clarification de la masse, protéines indéterminées ; POST/GET/SQL")
+
             fraction = request(port, "POST", "/meals", {**f02, "entry_id": "T06-DECIMAL",
                                "text": "12,5 g de riz cuit", "selected_nutrients": ["fat"]})
             fat, = fraction["report"]["nutrients"]
             assert fat["unit"] == "g" and Decimal(str(fat["value"])) == Decimal("0.0375")
             print("PASS fraction décimale : 0,0375 g de lipides")
+
+            for entry, declaration in (("T06-F15", cases["F15"]),
+                                       ("T06-F15-MIXED", f"100 g de poulet cuit et {cases['F15']}")):
+                refused = request(port, "POST", "/meals", {**f02, "entry_id": entry, "text": declaration},
+                                  expected=400)
+                assert refused == {"error": "negative_quantity"}
+                assert not db.execute("SELECT 1 FROM journal_result WHERE entry_id=%s", (entry,)).fetchone()
+                request(port, "GET", f"/meals/{entry}/revisions/1", expected=404)
+            print("PASS F15 et repas mixte : quantité négative rejetée, aucune écriture")
 
             request(port, "POST", "/meals", {**f02, "entry_id": "T06-BLANK", "text": "\u00a0"}, expected=400)
             assert not db.execute("SELECT 1 FROM journal_result WHERE entry_id='T06-BLANK'").fetchone()

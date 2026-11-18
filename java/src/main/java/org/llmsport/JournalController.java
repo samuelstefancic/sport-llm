@@ -52,6 +52,8 @@ class JournalController {
             return error(400, id, "invalid_selection");
         } catch (MealCalculator.InvalidCorrection e) {
             return error(400, id, "invalid_correction");
+        } catch (MealCalculator.NegativeQuantity e) {
+            return error(400, id, "negative_quantity");
         } catch (IllegalArgumentException e) {
             return error(502, id, "invalid_proposal");
         } catch (SQLException e) {
