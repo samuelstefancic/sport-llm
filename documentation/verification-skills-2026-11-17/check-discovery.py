@@ -13,7 +13,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / 'build' / 'verification' / 'skills'
 OUT.mkdir(parents=True, exist_ok=True)
-NAMES = sorted(p.parent.name for p in (ROOT / '.agents/skills').glob('*/SKILL.md'))
+SKILLS_DIR = ROOT / '.agents/skills'
+NAMES = {p.parent.name for p in SKILLS_DIR.glob('*/SKILL.md')}
 
 
 def run(environment, profile):
@@ -65,15 +66,17 @@ def run(environment, profile):
                              ('name', 'description', 'path', 'scope', 'enabled')}
                             for row in project for skill in row.get('skills', [])
                             if skill.get('name') in NAMES]
+        found = set()
         for skill in report['skills']:
-            if str(ROOT / '.agents/skills') in skill['path']:
+            expected_path = str(SKILLS_DIR / skill['name'] / 'SKILL.md')
+            if skill['path'] == expected_path:
                 skill['sha256'] = hashlib.sha256(Path(skill['path']).read_bytes()).hexdigest()
+                if skill['enabled'] is True and skill['scope'] == 'repo':
+                    found.add(skill['name'])
         report['project_errors'] = [error for row in project for error in row.get('errors', [])
-                                    if str(ROOT / '.agents/skills') in json.dumps(error)]
-        found = {s['name'] for s in report['skills']
-                 if s['enabled'] is True and str(ROOT / '.agents/skills') in s['path']}
-        report['missing_or_disabled'] = sorted(set(NAMES) - found)
-        report['status'] = 'PASS' if len(found) == 7 and not report['project_errors'] else 'INCOMPLETE'
+                                    if str(SKILLS_DIR) in json.dumps(error)]
+        report['missing_or_disabled'] = sorted(NAMES - found)
+        report['status'] = 'PASS' if len(NAMES) == 9 and found == NAMES and not report['project_errors'] else 'INCOMPLETE'
     except Exception as exc:
         report['status'] = 'BLOCKED'
         report['reason'] = str(exc)
