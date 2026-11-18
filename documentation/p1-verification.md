@@ -39,3 +39,29 @@ Les règles de lecture en français couvrent des formulations bornées. Chaque r
 `python -B scripts/verify_t07.py` a exercé le parcours local Spring Boot → FastAPI → Java → PostgreSQL. Les résultats acceptés ont été relus par HTTP et par SQL. Les vérifications T06 et T04 ont également réussi. Le démarrage avec Compose reste à vérifier dans T09. [Oracles](../data/dev/oracles.md) · [Contrôle HTTP et SQL](../scripts/verify_t07.py)
 
 **Exercice T07.** Pourquoi peut-on convertir 5 km en mètres et pourquoi la déclaration « j’ai couru 5 » ne permet-elle pas cette opération ?
+
+## T08 — Révisions, corrections et idempotence
+
+Sur les deux domaines `meals` et `workouts`, `PUT /{domaine}/{id}/revisions/{r}/declaration` enregistre une déclaration indépendamment de l’analyse. Son corps contient `text` et, pour un repas, les champs facultatifs `selected_nutrients` et `corrected_mentions`. La première révision est 1. La correction soumet le texte complet à la révision suivante. Répéter un PUT identique renvoie la déclaration enregistrée. Un autre contenu à la même révision retourne HTTP 409 `revision_conflict`. Une correction alimentaire contrôle les masses déclarées, les apports sélectionnés et les identifiants des mentions corrigées. Les quantités inconnues restent admises.
+
+Les `POST /meals` et `POST /workouts` gardent leurs corps historiques, avec `entry_id` et `entry_revision`. Ils calculent le résultat d’une déclaration identique déjà enregistrée, ou enregistrent la déclaration et le résultat ensemble pour une première révision ou une correction immédiate. `GET /{domaine}/{id}/revisions/{r}/declaration` et `GET /{domaine}/{id}/revisions/{r}` relisent respectivement la déclaration et le résultat historiques. `GET /{domaine}/{id}` relit le résultat de la révision courante et renvoie 404 tant que cette révision attend son résultat.
+
+Sur les POST, l’en-tête facultatif `Idempotency-Key` est commun aux deux domaines du journal local. Il accepte de 1 à 128 caractères ASCII parmi les lettres, chiffres, points, underscores, deux-points et tirets, avec une lettre ou un chiffre en premier. Le contenu comparé comprend domaine, identifiant, révision, texte exact, sélection ordonnée et ensemble des mentions corrigées. Le défaut de sélection équivaut à sa liste explicite dans le même ordre. La clé d’un résultat enregistré rejoue ce résultat, même après correction. Un contenu différent pour cette clé retourne HTTP 409 `idempotency_conflict`. La clé enregistre un succès dans PostgreSQL. Des POST concurrents peuvent chacun solliciter le pair Python.
+
+Java lit d’abord la révision sans verrou et ferme la connexion avant l’appel à Python. Après réception, Java ouvre une transaction PostgreSQL `READ COMMITTED` et verrouille la clé si elle est fournie. Il relit ensuite la révision sous `SELECT … FOR UPDATE` sur l’entrée. Ce verrou protège le contrôle final, l’éventuelle correction, le résultat et sa clé jusqu’au commit. Une proposition devenue obsolète reçoit HTTP 409 avec le rejet `java_analysis_rejection` et les deux révisions. [Schéma et reprise des données](../java/src/main/resources/journal.sql) · [Scénario T03](../contracts/examples/revision-scenario.json)
+
+Appliquer `java/src/main/resources/journal.sql` dans le schéma PostgreSQL du journal avant de lancer la nouvelle version Java, après avoir arrêté l’ancien écrivain. Le script reprend la plus haute révision persistée pour chaque identifiant et laisse les résultats historiques relisibles. Les déclarations et les clés absentes de l’ancien schéma restent absentes.
+
+| Contrôle local sur données fictives | Résultat observé par HTTP et PostgreSQL |
+|---|---|
+| Premier calcul du repas r1 retenu chez le pair | Correction de 150 à 100 g sur r2. Bilan T03 du sel vérifié sur r2. Retour r1 en HTTP 409 avec `PROP-OLD` et les révisions 1/2. Deux déclarations, zéro bilan r1, un bilan r2 préservé. |
+| Course sur le journal sportif | La correction r2 tient le verrou de ligne. `pg_blocking_pids` confirme que l’analyse r1 attend ce verrou après sa lecture préparatoire. Au commit de la correction, l’analyse reçoit HTTP 409. Le résultat r2 relu vaut 25 min et conserve la source de correction. |
+| Même clé et même contenu | Deux transactions atteignent le verrou PostgreSQL de la clé. Deux HTTP 200 avec le même résultat, une déclaration, un résultat et une clé persistés. |
+| Même clé et deux textes | Les deux transactions se présentent au même verrou PostgreSQL. HTTP 200 pour l’une et HTTP 409 `idempotency_conflict` pour l’autre. Le résultat et le texte du gagnant sont conservés. |
+| Même révision sans clé | Deux requêtes attendent le verrou de la même entrée. Seule celle qui correspond à la déclaration persistée aboutit. |
+| Rejeu ancien et échecs | La clé r1 renvoie le résultat initial après r2, y compris avec le pair arrêté. Les versions et les lignes SQL restent identiques après le rejeu, une proposition invalide, une correction refusée ou un appel d’analyse qui échoue. |
+| Migration sur données historiques | Résultats T06/T07 fictifs au format de l’ancien stockage. Leurs charges JSON restent relisibles. La plus haute révision devient courante et peut être corrigée. Réappliquer le script conserve l’état. |
+
+`python -B scripts/verify_t08.py` exécute ces contrôles dans un schéma isolé. Le pair HTTP de test invoque le parseur déterministe du service Python et permet de maîtriser l’ordre et d’injecter des réponses invalides. Les contrôles T06/T07 lancent FastAPI. Les barrières de T08 attendent des événements ou des verrous observés côté PostgreSQL. Les observations portent sur l’exécution locale. [Vérification T08](../scripts/verify_t08.py)
+
+**Exercice T08.** Si l’analyse a lu r1 et que la correction obtient le verrou d’abord, quelle révision la transaction d’analyse observe-t-elle quand elle obtient enfin le verrou, et que peut-elle écrire ?

@@ -125,6 +125,9 @@ def verify():
             salt = {"entry_id": "T03-SEL-001", "entry_revision": 2, "corrected_mentions": ["m1"],
                     "text": "100 g de riz cuit, 100 g de poulet cuit et 100 g de courgettes cuites.",
                     "selected_nutrients": ["salt", "energy", "protein", "carbohydrate", "fat"]}
+            request(port, "PUT", "/meals/T03-SEL-001/revisions/1/declaration",
+                    {"text": salt["text"].replace("100 g de riz", "150 g de riz"),
+                     "selected_nutrients": salt["selected_nutrients"]})
             check_oracle(db, port, salt, "java-salt-reference.json")
             assert request(port, "GET", "/meals/T06-F02/revisions/1") == original
             print("PASS T03-SEL-001 : riz corrigé à 100 g ; sel 0 g partiel, 2 manques ; "

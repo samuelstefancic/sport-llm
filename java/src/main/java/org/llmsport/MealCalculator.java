@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 
 final class MealCalculator {
     private static final String CATALOG = "DEMO-FOOD";
-    private static final List<String> DEFAULTS = List.of("energy", "protein", "carbohydrate", "fat");
+    static final List<String> DEFAULTS = List.of("energy", "protein", "carbohydrate", "fat");
     private static final int FR = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.UNICODE_CHARACTER_CLASS;
     private static final Pattern DISPLAY = Pattern.compile("[.!?]\\s*affiche\\b[^.!?]*[.!?]?\\s*$", FR);
     private static final Pattern SPLIT = Pattern.compile("(?<![0-9]),|,(?![0-9])|;|\\s+et\\s+", FR);
@@ -85,15 +85,7 @@ final class MealCalculator {
 
     private static List<String> selection(JsonNode selected, Catalog catalog) {
         List<String> ids = new ArrayList<>();
-        if (selected == null || selected.isMissingNode()) {
-            ids.addAll(DEFAULTS);
-        } else {
-            if (!selected.isArray() || selected.isEmpty() || selected.size() > 64) throw new InvalidSelection();
-            for (JsonNode value : selected) {
-                if (!value.isTextual() || ids.contains(value.textValue())) throw new InvalidSelection();
-                ids.add(value.textValue());
-            }
-        }
+        selected.forEach(value -> ids.add(value.textValue()));
         if (!catalog.units.keySet().containsAll(ids)) throw new InvalidSelection();
         return ids;
     }
@@ -104,6 +96,13 @@ final class MealCalculator {
 
     private static void check(boolean condition) {
         if (!condition) throw new IllegalArgumentException("invalid_proposal");
+    }
+
+    private static BigDecimal massNumber(Matcher amount) {
+        String number = amount.group(1);
+        BigDecimal value = number == null ? BigDecimal.ONE : new BigDecimal(number.replace(',', '.'));
+        if (value.signum() < 0) throw new NegativeQuantity();
+        return value;
     }
 
     private static boolean sameLabel(String label, String wording) {
@@ -129,10 +128,8 @@ final class MealCalculator {
         BigDecimal value = null;
         String unit = null;
         if (amount.find()) {
-            String number = amount.group(1);
-            value = number == null ? BigDecimal.ONE : new BigDecimal(number.replace(',', '.'));
-            if (value.signum() < 0) throw new NegativeQuantity();
-            unit = number == null ? "portion" : amount.group(2);
+            value = massNumber(amount);
+            unit = amount.group(1) == null ? "portion" : amount.group(2);
             if (unit != null) {
                 unit = unit.toLowerCase(Locale.ROOT);
                 if (unit.equals("portions") || unit.equals("bol") || unit.equals("bols")) unit = "portion";
@@ -256,24 +253,40 @@ final class MealCalculator {
         return row;
     }
 
-    static ObjectNode calculate(Connection db, ObjectMapper mapper, JsonNode input, JsonNode proposal, JsonNode selected)
-            throws SQLException {
-        Catalog catalog = catalog(db);
-        List<String> ids = selection(selected, catalog);
-        String declaration = DISPLAY.matcher(input.path("text").asText()).replaceFirst("");
+    private static List<String> fragments(String text) {
+        String declaration = DISPLAY.matcher(text).replaceFirst("");
         List<String> fragments = SPLIT.splitAsStream(declaration).map(MealCalculator::trim)
                 .filter(fragment -> !fragment.isEmpty()).toList();
-        if (fragments.isEmpty()) fragments = List.of(input.path("text").asText());
+        return fragments.isEmpty() ? List.of(text) : fragments;
+    }
+
+    private static Set<String> correctionPositions(JsonNode input, int count) {
+        Set<String> positions = new HashSet<>();
+        for (int i = 0; i < count; i++) positions.add("m" + (i + 1));
+        Set<String> corrected = new HashSet<>();
+        input.path("corrected_mentions").forEach(mark -> corrected.add(mark.textValue()));
+        if (!positions.containsAll(corrected)) throw new InvalidCorrection();
+        return corrected;
+    }
+
+    static void validateDeclaration(Connection db, JsonNode input) throws SQLException {
+        selection(input.path("selected_nutrients"), catalog(db));
+        List<String> fragments = fragments(input.path("text").textValue());
+        correctionPositions(input, fragments.size());
+        for (String fragment : fragments) {
+            Matcher amount = MASS.matcher(fragment);
+            if (amount.find()) massNumber(amount);
+        }
+    }
+
+    static ObjectNode calculate(Connection db, ObjectMapper mapper, JsonNode input, JsonNode proposal)
+            throws SQLException {
+        Catalog catalog = catalog(db);
+        List<String> ids = selection(input.path("selected_nutrients"), catalog);
+        List<String> fragments = fragments(input.path("text").textValue());
+        Set<String> corrected = correctionPositions(input, fragments.size());
         JsonNode mentions = proposal.path("food_mentions");
         check(mentions.size() == fragments.size());
-        Set<String> corrected = new HashSet<>();
-        JsonNode corrections = input.get("corrected_mentions");
-        if (corrections != null) {
-            if (!corrections.isArray()) throw new InvalidCorrection();
-            for (JsonNode mark : corrections) {
-                if (!mark.isTextual() || !corrected.add(mark.textValue())) throw new InvalidCorrection();
-            }
-        }
         Set<String> seen = new HashSet<>();
         List<Portion> portions = new ArrayList<>();
         ObjectNode result = mapper.createObjectNode();
@@ -292,7 +305,6 @@ final class MealCalculator {
                         .put("question", question(p.missing));
             }
         }
-        if (!seen.containsAll(corrected)) throw new InvalidCorrection();
         ObjectNode report = result.putObject("report").put("kind", "java_nutrition_report")
                 .put("schema_version", "0.1.0").put("meal_id", input.path("entry_id").asText())
                 .put("calculation", "sum_known_contributions_v1");

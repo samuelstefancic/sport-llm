@@ -265,14 +265,15 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
     }
 
     private static ObjectNode source(ObjectMapper mapper, JsonNode input, String text) {
-        var source = mapper.createObjectNode().put("kind", "user_declaration").put("text", text);
+        String kind = input.path("entry_revision").longValue() > 1 ? "user_correction" : "user_declaration";
+        var source = mapper.createObjectNode().put("kind", kind).put("text", text);
         source.set("input_id", input.get("entry_id"));
         source.set("input_revision", input.get("entry_revision"));
         return source;
     }
 
     private static boolean sameSource(JsonNode claim, ObjectNode source) {
-        return source.path("kind").equals(claim.path("kind")) && source.path("text").equals(claim.path("text"))
+        return "user_declaration".equals(claim.path("kind").textValue()) && source.path("text").equals(claim.path("text"))
                 && source.path("input_id").equals(claim.path("input_id"))
                 && source.path("input_revision").decimalValue().compareTo(claim.path("input_revision").decimalValue()) == 0;
     }
