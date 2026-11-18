@@ -20,10 +20,12 @@ def build_jar():
 
 
 @contextmanager
-def journal_db():
+def journal_db(before_migration=None):
     with test_schema() as dsn:
         run_cli(dsn, SOURCE, "--init-schema")
         with psycopg.connect(dsn, autocommit=True) as db:
+            if before_migration is not None:
+                before_migration(db)
             db.execute((ROOT / "java/src/main/resources/journal.sql").read_text(), prepare=False)
             yield dsn, db
 
@@ -49,7 +51,7 @@ def java_service(db):
             yield java_port, python_port, logs
 
 
-def request(port, method, path, body=None, *, headers=None, expected=200):
+def request(port, method, path, body=None, *, headers=None, expected=200, with_status=False):
     correlation = str(uuid4())
     headers = {"Content-Type": "application/json", "X-Correlation-ID": correlation, **(headers or {})}
     connection = HTTPConnection(HOST, port, timeout=12)
@@ -57,9 +59,11 @@ def request(port, method, path, body=None, *, headers=None, expected=200):
         connection.request(method, path, json.dumps(body) if body is not None else None, headers)
         reply = connection.getresponse()
         raw = reply.read()
-        assert reply.status == expected, (method, path, reply.status, raw[:600])
+        statuses = (expected,) if isinstance(expected, int) else expected
+        assert reply.status in statuses, (method, path, reply.status, raw[:600])
         assert reply.getheader("X-Correlation-ID") == headers["X-Correlation-ID"]
-        return json.loads(raw) if raw else None
+        payload = json.loads(raw) if raw else None
+        return (reply.status, payload) if with_status else payload
     finally:
         connection.close()
 
