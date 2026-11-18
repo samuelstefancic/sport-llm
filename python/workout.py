@@ -4,7 +4,16 @@ from decimal import Decimal
 import re
 
 
-NUMBER = re.compile(r"(?<![\w.,+−-])([+−-]?[0-9]+(?:[.,][0-9]+)?)")
+GROUP_SPACE = r"[ \u00a0\u2009\u202f]"
+# Read the whole numeric token even for an invalid separator or group length.
+NUMBER = re.compile(rf"(?<![\w.,+−-])([+−-]?[0-9]+(?:(?:[.,]|{GROUP_SPACE}+)[0-9]+)*)")
+NUMBER_FORMAT = re.compile(rf"[+−-]?(?:[0-9]+|[0-9]{{1,3}}(?:{GROUP_SPACE}[0-9]{{3}})+)(?:[.,][0-9]+)?")
+GROUP_SEPARATOR = re.compile(GROUP_SPACE)
+COMPOUND_UNIT_TAIL = re.compile(
+    r"\s*[/⁄∕·⋅*^²³⁻]|\s+par\s+"
+    r"(?:h|heures?|min|minutes?|s|secondes?|km|kilom[èe]tres?|m|m[èe]tres?|j|jours?|semaines?|mois|ans?)\b",
+    re.IGNORECASE,
+)
 UNIT_PATTERNS = {
     ("duration", "s"): r"secondes?|secs?|s",
     ("duration", "min"): r"minutes?|mins?",
@@ -41,13 +50,16 @@ def measure(text, number, source):
     for (dimension, code), pattern in UNITS:
         if found := pattern.match(text, end):
             field, unit, end = dimension, code, found.end()
+            if COMPOUND_UNIT_TAIL.match(text, end):
+                return None
             break
     if field is None:
         field = next((dimension for dimension, pattern in UNRESOLVED_FIELDS.items()
                       if re.search(pattern, prefix, re.IGNORECASE)), None)
-    if field is None:
+    if field is None or not NUMBER_FORMAT.fullmatch(number[1]):
         return None
-    value = Decimal(number[1].replace(",", ".").replace("−", "-"))
+    normalized = GROUP_SEPARATOR.sub("", number[1]).replace(",", ".").replace("−", "-")
+    value = Decimal(normalized)
     if value < 0:
         return None
     # Les propositions arrondies ne peuvent pas servir de source pour une mesure.

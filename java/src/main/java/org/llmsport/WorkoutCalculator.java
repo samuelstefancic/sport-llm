@@ -19,7 +19,15 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
     private static final String REPETITIONS = "repetitions";
     private static final String LOAD = "load";
 
-    private static final Pattern NUMBER = pattern("(?<![\\w.,+−-])([+−-]?[0-9]+(?:[.,][0-9]+)?)");
+    private static final String GROUP_SPACE = "[ \\u00a0\\u2009\\u202f]";
+    // Read the whole numeric token before checking its grouping, even when a group is malformed.
+    private static final Pattern NUMBER = pattern("(?<![\\w.,+−-])([+−-]?[0-9]+(?:(?:[.,]|"
+            + GROUP_SPACE + "+)[0-9]+)*)");
+    private static final Pattern NUMBER_FORMAT = pattern("[+−-]?(?:[0-9]+|[0-9]{1,3}(?:"
+            + GROUP_SPACE + "[0-9]{3})+)(?:[.,][0-9]+)?");
+    private static final Pattern GROUP_SEPARATOR = pattern(GROUP_SPACE);
+    private static final Pattern COMPOUND_UNIT_TAIL = pattern("\\s*[/⁄∕·⋅*^²³⁻]|\\s+par\\s+"
+            + "(?:h|heures?|min|minutes?|s|secondes?|km|kilom[èe]tres?|m|m[èe]tres?|j|jours?|semaines?|mois|ans?)\\b");
     private static final Pattern LABEL = pattern("\\b(dur[ée]e|distance(?:\\s+parcourue)?|charge)\\s*:?\\s*$");
     private static final Pattern RUN_DISTANCE = pattern("\\b(couru|course(?:\\s+à\\s+pied)?)\\s*:?\\s*$");
     private static final Pattern LIFT_LOAD = pattern("\\b(?:r[ée]p[ée]titions?|reps?)\\s*,?\\s+à\\s*$");
@@ -91,13 +99,17 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
             }
             String field = labelledField(prefix);
             if (unit != null) {
+                if (COMPOUND_UNIT_TAIL.matcher(text).region(end, text.length()).lookingAt()) continue;
                 if (field != null && !field.equals(unit.field)) throw new InvalidDeclaration("invalid_measure_unit");
                 field = unit.field;
             } else if (field == null) {
                 field = unresolvedField(prefix);
             }
             if (field == null) continue;
-            BigDecimal value = new BigDecimal(number.group(1).replace(',', '.').replace('−', '-'));
+            String written = number.group(1);
+            if (!NUMBER_FORMAT.matcher(written).matches()) throw new InvalidDeclaration("invalid_measure_number");
+            String normalized = GROUP_SEPARATOR.matcher(written).replaceAll("").replace(',', '.').replace('−', '-');
+            BigDecimal value = new BigDecimal(normalized);
             if (value.signum() < 0) {
                 throw new InvalidDeclaration(DURATION.equals(field) ? "negative_duration" : "negative_measure");
             }

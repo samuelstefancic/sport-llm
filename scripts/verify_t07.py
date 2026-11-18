@@ -148,10 +148,35 @@ def verify_faults(db, port):
           "HTTP 502, aucune écriture")
 
 
+def verify_measure_notation(db, port):
+    units = ("km/h", "km / h", "m/s", "m / s", "min/km", "min / km", "km par heure")
+    for i, unit in enumerate(units, 1):
+        entry = body(f"T07-COMPOUND-{i}", f"Vélo à 20 {unit} pendant 30 min.")
+        result = saved(db, port, entry, "cycling")
+        known(result, "duration", 30, "min", entry, "30 min")
+        absent(result, "distance")
+        assert result["measures"] == [
+            {"id": "duration", "value": 30, "unit": "min", "source": source(entry, "30 min")}]
+    print("PASS vitesse et allure, avec ou sans espaces : 30 min seules, unités composées laissées dans le texte ; POST/GET/SQL")
+
+    grouped = (("1 000", 1000), ("1\u202f250", 1250), ("1\u00a0250", 1250), ("1\u202f234\u202f567,25", 1234567.25))
+    for i, (written, value) in enumerate(grouped, 1):
+        fragment = f"{written} m"
+        entry = body(f"T07-GROUPED-{i}", f"Vélo : {fragment}.")
+        result = saved(db, port, entry, "cycling")
+        known(result, "distance", value, "m", entry, fragment)
+        assert result["measures"] == [
+            {"id": "distance", "value": value, "unit": "m", "source": source(entry, fragment)}]
+    refused(db, port, body("T07-GROUPED-INVALID", "Vélo : 1 25 m."), 400, "invalid_measure_number")
+    refused(db, port, body("T07-GROUPED-NEGATIVE", "Vélo : -1\u202f250 m."), 400, "negative_measure")
+    print("PASS milliers avec espace, espace insécable ou fine insécable : valeur et source entières ; POST/GET/SQL")
+
+
 def verify():
     with journal_db() as (_, db), java_service(db) as (port, python_port, logs):
         with running(uvicorn("app:app", "python", python_port), python_port, logs / "python.log"):
             verify_workouts(db, port)
+            verify_measure_notation(db, port)
         with running(uvicorn("t07_faults:app", "scripts", python_port), python_port, logs / "faults.log"):
             verify_faults(db, port)
 

@@ -31,6 +31,8 @@ Les règles de lecture en français couvrent des formulations bornées. Chaque r
 | S03 | 3 séries de 10 répétitions, 30 répétitions au total et 40 kg déclarés. Durée et distance absentes. |
 | S06 et témoin explicite | 30 min dans les deux cas. Le nombre 5 sans unité est conservé avec une question. Lorsqu’il est déclaré en km, il donne 5 000 m. |
 | S02, S04, S05, S07, S10 et variantes | Somme de 2 750 m, durée de 75 min, activité sans mesure, charge sans unité, zéro explicite, décimales, secondes et alternatives ambiguës vérifiés. |
+| Vitesse et allure | `km/h`, `m/s` et `min/km` avec ou sans espaces, ainsi que « km par heure », restent dans la déclaration. Les 30 min explicites sont enregistrées seules. |
+| Milliers groupés | Valeur entière et extrait d’origine conservés pour `1 000 m` et `1 250 m`, y compris les espaces insécables et les variantes décimales. Un groupe incomplet reçoit HTTP 400, sans écriture. |
 | S08 et unité incohérente dans la déclaration | HTTP 400, aucune écriture. |
 | Réponses simulées du pair FastAPI | HTTP 502 et aucune écriture pour une dimension invalide, une valeur ou une unité plausible contredite par le texte, une omission et une mauvaise révision de source. |
 
