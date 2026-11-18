@@ -18,6 +18,14 @@ async def faulty_reply(meal: dict, x_correlation_id: Annotated[str, Header()]):
     case = meal["text"]
     if case == "invalid-json":
         return Response(b'{"kind":', media_type="application/json", headers=headers)
+    if case == "100 g de riz cuit":
+        original = json.loads((examples / "python-meal-nominal.json").read_text())
+        mention = original["food_mentions"][0]
+        source = {**mention["source"], "input_id": meal["entry_id"], "input_revision": meal["entry_revision"]}
+        mention.update(source=source, catalog_candidates=[],
+                       quantity={"value": 150, "unit": "g", "source": source})
+        original.update(entry_id=meal["entry_id"], entry_revision=meal["entry_revision"], food_mentions=[mention])
+        return JSONResponse(original, headers=headers)
     if case == "slow-body":
         async def delayed_body():
             yield b"{"
