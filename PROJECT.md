@@ -47,7 +47,7 @@ Java garde contrôle transactionnel des corrections, révisions et idempotence. 
 
 ## État et effort
 
-**P0 clôturé. P1 en vérification finale sur T09. T10 attend son GO.** T01 a établi le raisonnement sur les protéines complètes, l’énergie partielle, le sel partiel avec un zéro connu et la comparaison atomique de révision. T02/T03 et leurs contrôles locaux ont été réalisés en P0. Une demande neutre isolée a conduit à la lecture de sn-plan-contracts. [Bilan P0](documentation/p0-verification/rapport.md) · [Vérifications P1](documentation/p1-verification.md)
+**P0 clôturé. P1 clôturable sur `1d4f315`. T10 a reçu son GO.** T01 a établi le raisonnement sur les protéines complètes, l’énergie partielle, le sel partiel avec un zéro connu et la comparaison atomique de révision. T02/T03 et leurs contrôles locaux ont été réalisés en P0. Une demande neutre isolée a conduit à la lecture de sn-plan-contracts. [Bilan P0](documentation/p0-verification/rapport.md) · [Vérifications P1](documentation/p1-verification.md)
 
 P0 : référence historique 8–12 h ; ébauche 4–8 h, estimation distincte non substituée. Le cadrage précédent proposait +1–2 h (9–14 h) sans création/vérification des sept skills. L'option C ajoute maintenant ce lot ; son temps observé et son impact sont consignés dans le rapport de vérification du lot, sans compter deux fois le cadrage. Il ne représente pas le temps d'apprentissage humain.
 
@@ -61,7 +61,7 @@ Lot option C réalisé le 17 novembre 2026 : [preuves et effort observé](docume
 
 Les futurs bilans d'évaluation publieront corrects/total et, pour l'acceptation automatique, corrects acceptés/acceptés avec leur couverture et les erreurs critiques par catégorie ; une précision avec zéro acceptation est indéfinie. Clarifications et abstentions restent distinctes. Les objectifs chiffrés de l'ébauche sont des hypothèses, pas des mesures ni des seuils validés. Les 30 cas servent à développer ; toute sélection sur ces cas exclut leur emploi comme test final indépendant.
 
-La reprise après P1 passe par T10 et la mesure de la baseline déterministe, sur décision de lancement. RAG-01 est prévu en fin de P2.
+La [mesure de la baseline déterministe T10](documentation/p2/baseline.md) ouvre P2. T11 attend sa décision de lancement. RAG-01 est prévu en fin de P2.
 
 ## T04 — échange HTTP local
 
@@ -138,4 +138,4 @@ T06 a calculé le cas fictif F02 en décimal à partir du catalogue actif et l�
 
 ## Livraison des chaînes P1
 
-Le [suivi des vérifications T06 à T09](documentation/p1-verification.md) consigne les commandes, résultats et exercices. La [livraison T09](documentation/p1-verification.md#t09--intégration-compose-et-pannes) donne la reproduction du parcours Compose et du workflow **Vérifications P1**. La PR T09 porte le bilan final de livraison. T10 attend son GO.
+Le [suivi des vérifications T06 à T09](documentation/p1-verification.md) consigne les commandes, résultats et exercices. La [livraison T09](documentation/p1-verification.md#t09--intégration-compose-et-pannes) donne la reproduction du parcours Compose et du workflow **Vérifications P1**. La PR T09 porte le bilan final de livraison. Le [protocole T10](documentation/p2/baseline.md) fixe la mesure locale et le contenu des preuves.
