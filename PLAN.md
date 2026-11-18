@@ -4,7 +4,7 @@ Version 1.0 · 17 novembre 2026. Les charges sont des estimations intégrées et
 
 ## Décision et état de départ
 
-**P0 clôturé. T09 porte les vérifications finales de P1.** L’état des contrôles locaux et de la CI est tenu dans les [vérifications P1](documentation/p1-verification.md#t09--intégration-compose-et-pannes). T10 attend son GO. RAG-01 est prévu en fin de P2.
+**P0 clôturé. P1 clôturable sur `1d4f315`.** Les [vérifications P1](documentation/p1-verification.md#t09--intégration-compose-et-pannes) portent les résultats locaux et la CI. T10 a reçu son GO et dispose d’un [protocole de mesure](documentation/p2/baseline.md). T11 attend sa décision de lancement. RAG-01 est prévu en fin de P2.
 
 | Élément | État vérifié | Preuve ou limite |
 |---|---|---|
