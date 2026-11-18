@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from copy import deepcopy
 import json
 import sys
 from time import monotonic
@@ -293,6 +294,8 @@ def invalid_attempts(db, port, peer):
 LEGACY = [
     ("T08-LEGACY-MEAL", 4, "meal", {"origin": "T06", "report": {"meal_id": "T08-LEGACY-MEAL", "meal_revision": 4}}),
     ("T08-LEGACY-MEAL", 1, "meal", {"origin": "T06", "report": {"meal_id": "T08-LEGACY-MEAL", "meal_revision": 1}}),
+    ("T08-LEGACY-MEAL", 3, "workout", {"origin": "T07", "entry_id": "T08-LEGACY-MEAL",
+                                      "entry_kind": "workout", "entry_revision": 3, "energy_burned": None}),
     ("T08-LEGACY-WORKOUT", 1, "workout", {"origin": "T07", "entry_id": "T08-LEGACY-WORKOUT",
                                         "entry_kind": "workout", "entry_revision": 1, "energy_burned": None}),
 ]
@@ -310,8 +313,20 @@ def prepare_legacy(db):
 
 def insert_legacy(db, results):
     for entry, revision, kind, payload in results:
-        db.execute("INSERT INTO journal_result VALUES (%s,%s,%s,%s::jsonb)",
+        db.execute("""INSERT INTO journal_result(entry_id,entry_revision,entry_kind,payload)
+                      VALUES (%s,%s,%s,%s::jsonb) ON CONFLICT (entry_id,entry_revision) DO NOTHING""",
                    (entry, revision, kind, json.dumps(payload)))
+
+
+def reject_legacy(db, row, constraint):
+    before = snapshot(db)
+    try:
+        insert_legacy(db, [row])
+    except psycopg.errors.CheckViolation as error:
+        assert error.diag.constraint_name == constraint
+    else:
+        raise AssertionError(f"Le résultat historique divergent a été accepté pour {row[:3]}")
+    assert snapshot(db) == before
 
 
 def legacy_results(db, port):
@@ -336,6 +351,30 @@ def legacy_results(db, port):
     print("PASS migration depuis le journal T06/T07 peuplé : reprise de MAX(révision), historique lisible "
           "et inchangé, pas de déclaration inventée, correction courante possible, migration rejouable")
 
+    reserved_r1 = content("T08-LEGACY-RESERVED", 1, "150 g de riz cuit", selected_nutrients=["protein"])
+    original_report = post(port, "meals", reserved_r1)
+    reserved_r2 = {**reserved_r1, "entry_revision": 2, "text": "100 g de riz cuit", "corrected_mentions": ["m1"]}
+    declaration = declare(port, "meals", reserved_r2)
+    divergent_report = deepcopy(original_report)
+    divergent_report["report"]["meal_revision"] = 2
+    divergent_report["report"]["nutrients"][0]["provenance"][0]["quantity"]["source"]["input_revision"] = 2
+    reserved = reserved_r1["entry_id"]
+    reject_legacy(db, (reserved, 2, "meal", divergent_report), "journal_result_declaration_binding")
+    assert revisions(db, reserved) == ((2,), [(1,), (2,)], [(1,)], [])
+    assert request(port, "GET", declaration_path("meals", reserved_r2)) == declaration
+    request(port, "GET", f"/meals/{reserved}", expected=404)
+    request(port, "GET", f"/meals/{reserved}/revisions/2", expected=404)
+    corrected = post(port, "meals", reserved_r2)
+    contribution, = corrected["report"]["nutrients"][0]["provenance"]
+    assert contribution["quantity"]["value"] == 100
+    assert contribution["quantity"]["source"]["kind"] == "user_correction"
+    assert request(port, "GET", f"/meals/{reserved}") == persisted(db, "meal", reserved, 2) == corrected
+    assert persisted(db, "meal", reserved, 1) == original_report
+    assert db.execute("SELECT declaration_bound FROM journal_result WHERE entry_id=%s ORDER BY entry_revision",
+                      (reserved,)).fetchall() == [(True,), (True,)]
+    print("PASS ancienne écriture 150 g sur une déclaration r2 à 100 g : SQLSTATE 23514, "
+          "GET courant 404 puis bilan T08 à 100 g, r1 intacte")
+
     meal, previous_meal_result, _, legacy_meal = LEGACY[0]
     workout, previous_workout_result, _, legacy_workout = LEGACY[-1]
     pending_workout = content(workout, previous_workout_result + 2, "Course 5 km en 25 min")
@@ -346,28 +385,39 @@ def legacy_results(db, port):
     other_domain_revision = meal_catchup + 3
     legacy_correction = {**legacy_meal, "report": {**legacy_meal["report"], "meal_revision": meal_catchup}}
     legacy_other_domain = {**legacy_workout, "entry_id": meal, "entry_revision": other_domain_revision}
-    # A temporarily restored T06/T07 writer only adds rows to journal_result.
-    insert_legacy(db, [(meal, meal_catchup, "meal", legacy_correction),
-                       (meal, other_domain_revision, "workout", legacy_other_domain)])
+    insert_legacy(db, [(meal, meal_catchup, "meal", legacy_correction)])
+    reject_legacy(db, (meal, other_domain_revision, "workout", legacy_other_domain), "journal_result_entry_kind")
+    request(port, "GET", f"/workouts/{meal}/revisions/{other_domain_revision}", expected=404)
     assert request(port, "GET", f"/meals/{meal}")["report"]["meal_revision"] == meal_catchup - 1
     before = snapshot(db)
     db.execute((ROOT / "java/src/main/resources/journal.sql").read_text(), prepare=False)
     assert snapshot(db)[1:] == before[1:]
     assert request(port, "GET", f"/meals/{meal}") == legacy_correction
+    assert db.execute("SELECT declaration_bound FROM journal_result WHERE entry_id=%s AND entry_revision=%s",
+                      (meal, meal_catchup)).fetchone() == (False,)
     request(port, "GET", f"/meals/{meal}/revisions/{meal_catchup}/declaration", expected=404)
-    assert request(port, "GET", f"/workouts/{meal}/revisions/{other_domain_revision}") == legacy_other_domain
     request(port, "GET", f"/workouts/{meal}", expected=404)
     assert request(port, "GET", declaration_path("workouts", pending_workout)) == pending
     assert revisions(db, workout)[0] == (pending_workout["entry_revision"],)
     request(port, "GET", f"/workouts/{workout}", expected=404)
-    next_meal = post(port, "meals", content(meal, meal_catchup + 1, "120 g de riz cuit"))
-    assert next_meal == request(port, "GET", f"/meals/{meal}")
+    for revision in range(meal_catchup + 1, other_domain_revision + 2):
+        next_meal = post(port, "meals", content(meal, revision, f"{100 + revision} g de riz cuit"))
+        assert next_meal == request(port, "GET", f"/meals/{meal}") == persisted(db, "meal", meal, revision)
+    request(port, "GET", f"/workouts/{meal}/revisions/{other_domain_revision}", expected=404)
     assert request(port, "GET", f"/meals/{meal}/revisions/{meal_catchup}") == legacy_correction
     before = snapshot(db)
     db.execute((ROOT / "java/src/main/resources/journal.sql").read_text(), prepare=False)
     assert snapshot(db) == before
-    print("PASS reprise après ancien écrivain : tête repas avancée de r5 à r6 puis correction r7 possible, "
-          "résultat sport r9 historique seulement et déclaration sport r3 en attente préservée")
+    print("PASS reprise après ancien écrivain : r6 repas reprise, r9 sport refusée en SQLSTATE 23514, "
+          "r7 à r10 repas appliquées et déclaration sport r3 en attente préservée")
+
+    new_workout = "T08-LEGACY-NEW-WORKOUT"
+    new_payload = {**legacy_workout, "entry_id": new_workout}
+    insert_legacy(db, [(new_workout, 1, "workout", new_payload)])
+    reject_legacy(db, (new_workout, 2, "meal", legacy_meal), "journal_result_entry_kind")
+    assert request(port, "GET", f"/workouts/{new_workout}") == new_payload
+    print("PASS ancien premier INSERT sur un nouvel identifiant : domaine sport fixé et résultat relisible, "
+          "écriture repas suivante refusée en SQLSTATE 23514")
 
 
 def verify():

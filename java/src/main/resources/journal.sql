@@ -40,4 +40,39 @@ CREATE TABLE IF NOT EXISTS journal_idempotency (
     FOREIGN KEY (entry_id, entry_revision) REFERENCES journal_result(entry_id, entry_revision)
 );
 
+ALTER TABLE journal_result ADD COLUMN IF NOT EXISTS declaration_bound boolean NOT NULL DEFAULT false;
+
+-- Older writers omit declaration_bound. Preserve their INSERT format for an unreserved revision
+-- in the entry's domain, including the first result for a new identifier.
+CREATE OR REPLACE FUNCTION check_journal_result_binding()
+RETURNS trigger LANGUAGE plpgsql SET search_path FROM CURRENT AS $$
+DECLARE
+    expected_kind text;
+    declaration_exists boolean;
+BEGIN
+    INSERT INTO journal_entry(entry_id,entry_kind,current_revision)
+    VALUES (NEW.entry_id,NEW.entry_kind,NEW.entry_revision)
+    ON CONFLICT (entry_id) DO NOTHING;
+
+    SELECT entry_kind INTO expected_kind FROM journal_entry WHERE entry_id=NEW.entry_id FOR UPDATE;
+    IF expected_kind IS DISTINCT FROM NEW.entry_kind THEN
+        RAISE EXCEPTION 'Result domain differs from the journal entry domain'
+            USING ERRCODE = '23514', CONSTRAINT = 'journal_result_entry_kind';
+    END IF;
+
+    SELECT EXISTS (SELECT 1 FROM journal_declaration
+                   WHERE entry_id=NEW.entry_id AND entry_revision=NEW.entry_revision) INTO declaration_exists;
+    IF NEW.declaration_bound IS DISTINCT FROM declaration_exists THEN
+        RAISE EXCEPTION 'Result binding differs from the declaration at this revision'
+            USING ERRCODE = '23514', CONSTRAINT = 'journal_result_declaration_binding';
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS journal_result_check_binding ON journal_result;
+CREATE TRIGGER journal_result_check_binding BEFORE INSERT ON journal_result
+FOR EACH ROW EXECUTE FUNCTION check_journal_result_binding();
+
 COMMIT;

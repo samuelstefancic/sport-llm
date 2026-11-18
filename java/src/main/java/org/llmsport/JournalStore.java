@@ -183,7 +183,8 @@ class JournalStore {
 
     private static void writeResult(Connection db, JournalDeclaration declaration, JsonNode payload) throws SQLException {
         try (var statement = db.prepareStatement("""
-                INSERT INTO journal_result(entry_id,entry_revision,entry_kind,payload) VALUES (?,?,?,?::jsonb)""")) {
+                INSERT INTO journal_result(entry_id,entry_revision,entry_kind,payload,declaration_bound)
+                VALUES (?,?,?,?::jsonb,true)""")) {
             bindRevision(statement, declaration);
             statement.setString(3, declaration.kind());
             statement.setString(4, payload.toString());
