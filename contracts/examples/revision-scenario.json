@@ -1,0 +1,38 @@
+{
+  "id": "T03-STALE-001",
+  "fictitious": true,
+  "events": [
+    {
+      "type": "analysis_started",
+      "entry_id": "MEAL-001",
+      "revision": 1,
+      "rice_g": 150,
+      "proposal_id": "PROP-OLD"
+    },
+    {
+      "type": "user_correction_committed",
+      "entry_id": "MEAL-001",
+      "revision": 2,
+      "rice_g": 100
+    },
+    {
+      "type": "analysis_returned",
+      "proposal_file": "python-stale-revision.json",
+      "analysis_revision": 1
+    }
+  ],
+  "current_state": {
+    "meal_revision": 2,
+    "rice_g": 100,
+    "report_file": "java-salt-reference.json"
+  },
+  "expected": {
+    "rejection_file": "java-stale-rejection.json",
+    "business_code": "stale_revision",
+    "writes": 0,
+    "meal_revision_after": 2,
+    "rice_g_after": 100,
+    "report_after": "java-salt-reference.json"
+  },
+  "rule": "Comparer la révision et appliquer le résultat dans la même transaction/opération conditionnelle Java ; aucune lecture puis écriture séparées. P1 NOT_RUN."
+}

@@ -1,0 +1,47 @@
+{
+  "schema_version": "0.1.0",
+  "kind": "python_proposal",
+  "proposal_id": "PROP-SPORT",
+  "entry_id": "WORKOUT-001",
+  "entry_revision": 1,
+  "entry_kind": "workout",
+  "food_mentions": [],
+  "sport_mentions": [
+    {
+      "mention_id": "RUN-1",
+      "text": "Course 5 km en 30 min",
+      "activity": "running",
+      "measures": [
+        {
+          "id": "distance",
+          "value": 5,
+          "unit": "kg",
+          "source": {
+            "kind": "user_declaration",
+            "input_id": "INPUT-001",
+            "input_revision": 1,
+            "text": "Course 5 km en 30 min"
+          }
+        },
+        {
+          "id": "duration",
+          "value": 30,
+          "unit": "min",
+          "source": {
+            "kind": "user_declaration",
+            "input_id": "INPUT-001",
+            "input_revision": 1,
+            "text": "Course 5 km en 30 min"
+          }
+        }
+      ],
+      "source": {
+        "kind": "user_declaration",
+        "input_id": "INPUT-001",
+        "input_revision": 1,
+        "text": "Course 5 km en 30 min"
+      }
+    }
+  ],
+  "clarifications": []
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1.0",
+  "kind": "java_analysis_rejection",
+  "entry_id": "MEAL-001",
+  "proposal_id": "PROP-OLD",
+  "analysis_revision": 1,
+  "current_revision": 2,
+  "code": "stale_revision",
+  "detail": "Analyse r1 reçue après correction r2 ; aucune écriture du bilan ni de la correction."
+}

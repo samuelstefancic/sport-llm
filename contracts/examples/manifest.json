@@ -1,0 +1,259 @@
+{
+  "schema": "../analysis.schema.json",
+  "schema_version": "0.1.0",
+  "fictitious": true,
+  "examples": [
+    {
+      "id": "python-meal-nominal",
+      "file": "python-meal-nominal.json",
+      "expected_schema_valid": true,
+      "category": "nominal",
+      "expected_business_outcome": "candidate_for_java_validation",
+      "note": ""
+    },
+    {
+      "id": "python-quantity-ambiguous",
+      "file": "python-quantity-ambiguous.json",
+      "expected_schema_valid": true,
+      "category": "ambiguous",
+      "expected_business_outcome": "clarify_quantity",
+      "note": ""
+    },
+    {
+      "id": "python-raw-cooked-ambiguous",
+      "file": "python-raw-cooked-ambiguous.json",
+      "expected_schema_valid": true,
+      "category": "ambiguous",
+      "expected_business_outcome": "clarify_food_state",
+      "note": ""
+    },
+    {
+      "id": "python-workout-nominal",
+      "file": "python-workout-nominal.json",
+      "expected_schema_valid": true,
+      "category": "nominal",
+      "expected_business_outcome": "candidate_for_java_validation",
+      "note": ""
+    },
+    {
+      "id": "java-macros-complete",
+      "file": "java-macros-complete.json",
+      "expected_schema_valid": true,
+      "category": "nominal",
+      "expected_business_outcome": "accept_if_current_revision_and_catalog_verified",
+      "note": "Oracle manuel : 415 kcal, 42.5 g protéines, 46 g glucides, 4.3 g lipides."
+    },
+    {
+      "id": "java-salt-reference",
+      "file": "java-salt-reference.json",
+      "expected_schema_valid": true,
+      "category": "nominal",
+      "expected_business_outcome": "accept_if_current_revision_and_catalog_verified",
+      "note": "Reprise du premier T03-SEL-001 historique ; version catalogue différente du corpus enrichi."
+    },
+    {
+      "id": "java-zero-complete",
+      "file": "java-zero-complete.json",
+      "expected_schema_valid": true,
+      "category": "nominal",
+      "expected_business_outcome": "accept_if_current_revision_and_catalog_verified",
+      "note": ""
+    },
+    {
+      "id": "java-salt-indeterminate",
+      "file": "java-salt-indeterminate.json",
+      "expected_schema_valid": true,
+      "category": "ambiguous",
+      "expected_business_outcome": "retain_missing_value",
+      "note": ""
+    },
+    {
+      "id": "python-stale-revision",
+      "file": "python-stale-revision.json",
+      "expected_schema_valid": true,
+      "category": "business_invalid",
+      "expected_business_outcome": "reject_stale_revision",
+      "note": "Structure valide : obsolescence dépend de la révision courante 2 en base, pas du schéma."
+    },
+    {
+      "id": "java-stale-rejection",
+      "file": "java-stale-rejection.json",
+      "expected_schema_valid": true,
+      "category": "nominal",
+      "expected_business_outcome": "leave_current_meal_unchanged",
+      "note": ""
+    },
+    {
+      "id": "invalid-python-claims-validation",
+      "file": "invalid-python-claims-validation.json",
+      "expected_schema_valid": false,
+      "category": "invalid",
+      "expected_business_outcome": "reject_schema",
+      "note": "Un champ de validation Java n’appartient pas à une proposition Python.",
+      "expected_failure_path": []
+    },
+    {
+      "id": "invalid-negative-quantity",
+      "file": "invalid-negative-quantity.json",
+      "expected_schema_valid": false,
+      "category": "invalid",
+      "expected_business_outcome": "reject_schema",
+      "note": "",
+      "expected_failure_path": [
+        "food_mentions",
+        0,
+        "quantity",
+        "value"
+      ]
+    },
+    {
+      "id": "invalid-schema-version",
+      "file": "invalid-schema-version.json",
+      "expected_schema_valid": false,
+      "category": "invalid",
+      "expected_business_outcome": "reject_schema",
+      "note": "",
+      "expected_failure_path": [
+        "schema_version"
+      ]
+    },
+    {
+      "id": "invalid-report-no-revision",
+      "file": "invalid-report-no-revision.json",
+      "expected_schema_valid": false,
+      "category": "invalid",
+      "expected_business_outcome": "reject_schema",
+      "note": "",
+      "expected_failure_path": []
+    },
+    {
+      "id": "invalid-energy-unit",
+      "file": "invalid-energy-unit.json",
+      "expected_schema_valid": false,
+      "category": "invalid",
+      "expected_business_outcome": "reject_schema",
+      "note": "",
+      "expected_failure_path": [
+        "nutrients",
+        0,
+        "unit"
+      ]
+    },
+    {
+      "id": "invalid-complete-with-missing",
+      "file": "invalid-complete-with-missing.json",
+      "expected_schema_valid": false,
+      "category": "invalid",
+      "expected_business_outcome": "reject_schema",
+      "note": "",
+      "expected_failure_path": [
+        "nutrients",
+        0,
+        "missing"
+      ]
+    },
+    {
+      "id": "invalid-partial-null",
+      "file": "invalid-partial-null.json",
+      "expected_schema_valid": false,
+      "category": "invalid",
+      "expected_business_outcome": "reject_schema",
+      "note": "",
+      "expected_failure_path": [
+        "nutrients",
+        0,
+        "value"
+      ]
+    },
+    {
+      "id": "invalid-indeterminate-zero",
+      "file": "invalid-indeterminate-zero.json",
+      "expected_schema_valid": false,
+      "category": "invalid",
+      "expected_business_outcome": "reject_schema",
+      "note": "",
+      "expected_failure_path": [
+        "nutrients",
+        0,
+        "value"
+      ]
+    },
+    {
+      "id": "invalid-complete-no-provenance",
+      "file": "invalid-complete-no-provenance.json",
+      "expected_schema_valid": false,
+      "category": "invalid",
+      "expected_business_outcome": "reject_schema",
+      "note": "",
+      "expected_failure_path": [
+        "nutrients",
+        0,
+        "provenance"
+      ]
+    },
+    {
+      "id": "business-invalid-wrong-total",
+      "file": "business-invalid-wrong-total.json",
+      "expected_schema_valid": true,
+      "category": "business_invalid",
+      "expected_business_outcome": "reject_wrong_arithmetic",
+      "note": "Schéma valide ; total métier faux, règle Java de recalcul sur les sources."
+    },
+    {
+      "id": "business-invalid-duplicate-nutrient",
+      "file": "business-invalid-duplicate-nutrient.json",
+      "expected_schema_valid": true,
+      "category": "business_invalid",
+      "expected_business_outcome": "reject_duplicate_nutrient",
+      "note": "Unicité par identifiant et égalité avec la sélection : règles métier Java."
+    },
+    {
+      "id": "invalid-sport-distance-unit",
+      "file": "invalid-sport-distance-unit.json",
+      "expected_schema_valid": false,
+      "category": "invalid",
+      "expected_business_outcome": "reject_schema",
+      "note": "",
+      "expected_failure_path": [
+        "sport_mentions",
+        0,
+        "measures",
+        0,
+        "unit"
+      ]
+    },
+    {
+      "id": "invalid-reference-energy-unit",
+      "file": "invalid-reference-energy-unit.json",
+      "expected_schema_valid": false,
+      "category": "invalid",
+      "expected_business_outcome": "reject_schema",
+      "note": "",
+      "expected_failure_path": [
+        "nutrients",
+        0,
+        "provenance",
+        0,
+        "reference",
+        "unit"
+      ]
+    },
+    {
+      "id": "business-invalid-python-forges-java-report",
+      "file": "business-invalid-python-forges-java-report.json",
+      "expected_schema_valid": true,
+      "category": "business_invalid",
+      "expected_business_outcome": "reject_wrong_producer",
+      "note": "Union racine valide ; branche python_proposal requise pour une réponse Python, et origine contrôlée par le service Java.",
+      "expected_receiver_branch": "python_proposal"
+    },
+    {
+      "id": "java-micronutrients-complete",
+      "file": "java-micronutrients-complete.json",
+      "expected_schema_valid": true,
+      "category": "nominal",
+      "expected_business_outcome": "accept_if_current_revision_and_catalog_verified",
+      "note": "2 mg vitamine C,15 ug B9,10 mg calcium pour50gD04."
+    }
+  ]
+}

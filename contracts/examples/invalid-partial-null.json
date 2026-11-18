@@ -1,0 +1,327 @@
+{
+  "schema_version": "0.1.0",
+  "kind": "java_nutrition_report",
+  "meal_id": "MEAL-001",
+  "meal_revision": 2,
+  "selected_nutrients": [
+    "salt",
+    "energy",
+    "protein",
+    "carbohydrate",
+    "fat"
+  ],
+  "nutrients": [
+    {
+      "id": "salt",
+      "unit": "g",
+      "value": null,
+      "status": "partiel",
+      "provenance": [
+        {
+          "item_id": "D01",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_correction",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D01"
+            }
+          },
+          "reference": {
+            "value": 0,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.1-salt-variant",
+              "record_id": "D01",
+              "field": "nutrients.salt"
+            }
+          },
+          "value": 0.0
+        }
+      ],
+      "missing": [
+        {
+          "item_id": "D02",
+          "reason": "catalog_value_absent",
+          "detail": "salt absent de la fiche D02",
+          "source": {
+            "kind": "catalog",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "record_id": "D02",
+            "field": "nutrients.salt"
+          }
+        },
+        {
+          "item_id": "D03",
+          "reason": "catalog_value_absent",
+          "detail": "salt absent de la fiche D03",
+          "source": {
+            "kind": "catalog",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "record_id": "D03",
+            "field": "nutrients.salt"
+          }
+        }
+      ]
+    },
+    {
+      "id": "energy",
+      "unit": "kcal",
+      "value": 295,
+      "status": "partiel",
+      "provenance": [
+        {
+          "item_id": "D01",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_correction",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D01"
+            }
+          },
+          "reference": {
+            "value": 130,
+            "unit": "kcal",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.1-salt-variant",
+              "record_id": "D01",
+              "field": "nutrients.energy"
+            }
+          },
+          "value": 130.0
+        },
+        {
+          "item_id": "D02",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D02"
+            }
+          },
+          "reference": {
+            "value": 165,
+            "unit": "kcal",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.1-salt-variant",
+              "record_id": "D02",
+              "field": "nutrients.energy"
+            }
+          },
+          "value": 165.0
+        }
+      ],
+      "missing": [
+        {
+          "item_id": "D03",
+          "reason": "catalog_value_absent",
+          "detail": "energy absent de la fiche D03",
+          "source": {
+            "kind": "catalog",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "record_id": "D03",
+            "field": "nutrients.energy"
+          }
+        }
+      ]
+    },
+    {
+      "id": "protein",
+      "unit": "g",
+      "value": 34.5,
+      "status": "complet",
+      "provenance": [
+        {
+          "item_id": "D01",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_correction",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D01"
+            }
+          },
+          "reference": {
+            "value": 2.5,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.1-salt-variant",
+              "record_id": "D01",
+              "field": "nutrients.protein"
+            }
+          },
+          "value": 2.5
+        },
+        {
+          "item_id": "D02",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D02"
+            }
+          },
+          "reference": {
+            "value": 31,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.1-salt-variant",
+              "record_id": "D02",
+              "field": "nutrients.protein"
+            }
+          },
+          "value": 31.0
+        },
+        {
+          "item_id": "D03",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D03"
+            }
+          },
+          "reference": {
+            "value": 1,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.1-salt-variant",
+              "record_id": "D03",
+              "field": "nutrients.protein"
+            }
+          },
+          "value": 1.0
+        }
+      ],
+      "missing": []
+    },
+    {
+      "id": "carbohydrate",
+      "unit": "g",
+      "value": null,
+      "status": "indéterminé",
+      "provenance": [],
+      "missing": [
+        {
+          "item_id": "D01",
+          "reason": "catalog_value_absent",
+          "detail": "carbohydrate absent de la fiche D01",
+          "source": {
+            "kind": "catalog",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "record_id": "D01",
+            "field": "nutrients.carbohydrate"
+          }
+        },
+        {
+          "item_id": "D02",
+          "reason": "catalog_value_absent",
+          "detail": "carbohydrate absent de la fiche D02",
+          "source": {
+            "kind": "catalog",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "record_id": "D02",
+            "field": "nutrients.carbohydrate"
+          }
+        },
+        {
+          "item_id": "D03",
+          "reason": "catalog_value_absent",
+          "detail": "carbohydrate absent de la fiche D03",
+          "source": {
+            "kind": "catalog",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "record_id": "D03",
+            "field": "nutrients.carbohydrate"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fat",
+      "unit": "g",
+      "value": null,
+      "status": "indéterminé",
+      "provenance": [],
+      "missing": [
+        {
+          "item_id": "D01",
+          "reason": "catalog_value_absent",
+          "detail": "fat absent de la fiche D01",
+          "source": {
+            "kind": "catalog",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "record_id": "D01",
+            "field": "nutrients.fat"
+          }
+        },
+        {
+          "item_id": "D02",
+          "reason": "catalog_value_absent",
+          "detail": "fat absent de la fiche D02",
+          "source": {
+            "kind": "catalog",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "record_id": "D02",
+            "field": "nutrients.fat"
+          }
+        },
+        {
+          "item_id": "D03",
+          "reason": "catalog_value_absent",
+          "detail": "fat absent de la fiche D03",
+          "source": {
+            "kind": "catalog",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "record_id": "D03",
+            "field": "nutrients.fat"
+          }
+        }
+      ]
+    }
+  ],
+  "calculation": "sum_known_contributions_v1"
+}

@@ -1,0 +1,96 @@
+{
+  "schema_version": "0.1.0",
+  "kind": "python_proposal",
+  "proposal_id": "PROP-002",
+  "entry_id": "MEAL-001",
+  "entry_revision": 2,
+  "entry_kind": "meal",
+  "food_mentions": [
+    {
+      "mention_id": "D01",
+      "text": "100 g de riz cuit",
+      "source": {
+        "kind": "user_declaration",
+        "input_id": "INPUT-001",
+        "input_revision": 2,
+        "text": "100 g de riz cuit"
+      },
+      "quantity": {
+        "value": 100,
+        "unit": "g",
+        "source": {
+          "kind": "user_declaration",
+          "input_id": "INPUT-001",
+          "input_revision": 2,
+          "text": "100 g de riz cuit"
+        }
+      },
+      "food_state": "cooked",
+      "catalog_candidates": [
+        {
+          "catalog_id": "DEMO-FOOD",
+          "catalog_version": "0.2.0",
+          "record_id": "D01"
+        }
+      ]
+    },
+    {
+      "mention_id": "D02",
+      "text": "100 g de poulet cuit",
+      "source": {
+        "kind": "user_declaration",
+        "input_id": "INPUT-001",
+        "input_revision": 2,
+        "text": "100 g de poulet cuit"
+      },
+      "quantity": {
+        "value": 100,
+        "unit": "g",
+        "source": {
+          "kind": "user_declaration",
+          "input_id": "INPUT-001",
+          "input_revision": 2,
+          "text": "100 g de poulet cuit"
+        }
+      },
+      "food_state": "cooked",
+      "catalog_candidates": [
+        {
+          "catalog_id": "DEMO-FOOD",
+          "catalog_version": "0.2.0",
+          "record_id": "D02"
+        }
+      ]
+    },
+    {
+      "mention_id": "D04",
+      "text": "100 g de lentilles cuites",
+      "source": {
+        "kind": "user_declaration",
+        "input_id": "INPUT-001",
+        "input_revision": 2,
+        "text": "100 g de lentilles cuites"
+      },
+      "quantity": {
+        "value": 100,
+        "unit": "g",
+        "source": {
+          "kind": "user_declaration",
+          "input_id": "INPUT-001",
+          "input_revision": 2,
+          "text": "100 g de lentilles cuites"
+        }
+      },
+      "food_state": "cooked",
+      "catalog_candidates": [
+        {
+          "catalog_id": "DEMO-FOOD",
+          "catalog_version": "0.2.0",
+          "record_id": "D04"
+        }
+      ]
+    }
+  ],
+  "sport_mentions": [],
+  "clarifications": []
+}

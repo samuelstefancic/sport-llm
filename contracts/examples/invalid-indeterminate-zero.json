@@ -1,0 +1,33 @@
+{
+  "schema_version": "0.1.0",
+  "kind": "java_nutrition_report",
+  "meal_id": "MEAL-001",
+  "meal_revision": 2,
+  "selected_nutrients": [
+    "salt"
+  ],
+  "nutrients": [
+    {
+      "id": "salt",
+      "unit": "g",
+      "value": 0,
+      "status": "indéterminé",
+      "provenance": [],
+      "missing": [
+        {
+          "item_id": "D02",
+          "reason": "catalog_value_absent",
+          "detail": "salt absent de la fiche D02",
+          "source": {
+            "kind": "catalog",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.2.0",
+            "record_id": "D02",
+            "field": "nutrients.salt"
+          }
+        }
+      ]
+    }
+  ],
+  "calculation": "sum_known_contributions_v1"
+}

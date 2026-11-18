@@ -1,0 +1,985 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:llmsport:analysis:0.1.0",
+  "title": "llmSport analysis contract 0.1.0",
+  "description": "Contrat canonique Python proposition / Java bilan ou rejet. Les règles transactionnelles et calculatoires sont définies dans analysis.md, à implémenter en P1.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/python_proposal"
+    },
+    {
+      "$ref": "#/$defs/java_nutrition_report"
+    },
+    {
+      "$ref": "#/$defs/java_analysis_rejection"
+    }
+  ],
+  "$defs": {
+    "nutrient_id": {
+      "type": "string",
+      "pattern": "^(energy|protein|carbohydrate|fat|fiber|sugars|salt|(vitamin|mineral)_[a-z][a-z0-9_]{0,40})$"
+    },
+    "selected_nutrients": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/nutrient_id"
+      }
+    },
+    "declared_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "user_declaration",
+            "user_correction"
+          ]
+        },
+        "input_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "input_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "kind",
+        "input_id",
+        "input_revision",
+        "text"
+      ]
+    },
+    "catalog_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "catalog"
+        },
+        "catalog_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "catalog_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "record_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "kind",
+        "catalog_id",
+        "catalog_version",
+        "record_id",
+        "field"
+      ]
+    },
+    "source": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/declared_source"
+        },
+        {
+          "$ref": "#/$defs/catalog_source"
+        }
+      ]
+    },
+    "quantity": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": [
+            "g",
+            "kg",
+            "ml",
+            "l",
+            "portion"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/declared_source"
+        }
+      },
+      "required": [
+        "value",
+        "unit",
+        "source"
+      ]
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "catalog_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "catalog_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "record_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        }
+      },
+      "required": [
+        "catalog_id",
+        "catalog_version",
+        "record_id"
+      ]
+    },
+    "clarification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mention_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "reason": {
+          "enum": [
+            "quantity_absent",
+            "unit_absent",
+            "raw_cooked_unknown",
+            "food_unresolved",
+            "portion_mass_unknown",
+            "density_unknown",
+            "activity_ambiguous",
+            "target_ambiguous",
+            "other"
+          ]
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "mention_id",
+        "field",
+        "reason",
+        "question"
+      ]
+    },
+    "food_mention": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mention_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "source": {
+          "$ref": "#/$defs/declared_source"
+        },
+        "quantity": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/quantity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "food_state": {
+          "enum": [
+            "raw",
+            "cooked",
+            "not_applicable",
+            "unknown"
+          ]
+        },
+        "catalog_candidates": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/candidate"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "mention_id",
+        "text",
+        "source",
+        "quantity",
+        "food_state",
+        "catalog_candidates"
+      ]
+    },
+    "sport_measure": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "enum": [
+            "duration",
+            "distance",
+            "sets",
+            "repetitions",
+            "load"
+          ]
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "unit": {
+          "enum": [
+            "s",
+            "min",
+            "h",
+            "m",
+            "km",
+            "count",
+            "kg",
+            null
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/declared_source"
+        }
+      },
+      "required": [
+        "id",
+        "value",
+        "unit",
+        "source"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "id": {
+                  "const": "duration"
+                },
+                "unit": {
+                  "enum": [
+                    "s",
+                    "min",
+                    "h",
+                    null
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "distance"
+                },
+                "unit": {
+                  "enum": [
+                    "m",
+                    "km",
+                    null
+                  ]
+                }
+              }
+            },
+            {
+              "properties": {
+                "id": {
+                  "enum": [
+                    "sets",
+                    "repetitions"
+                  ]
+                },
+                "unit": {
+                  "enum": [
+                    "count",
+                    null
+                  ]
+                },
+                "value": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0
+                }
+              }
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "load"
+                },
+                "unit": {
+                  "enum": [
+                    "kg",
+                    null
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "sport_mention": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mention_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "activity": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "measures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sport_measure"
+          },
+          "minItems": 0
+        },
+        "source": {
+          "$ref": "#/$defs/declared_source"
+        }
+      },
+      "required": [
+        "mention_id",
+        "text",
+        "activity",
+        "measures",
+        "source"
+      ]
+    },
+    "python_proposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1.0"
+        },
+        "kind": {
+          "const": "python_proposal"
+        },
+        "proposal_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "entry_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "entry_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "entry_kind": {
+          "enum": [
+            "meal",
+            "workout",
+            "mixed"
+          ]
+        },
+        "food_mentions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/food_mention"
+          },
+          "minItems": 0
+        },
+        "sport_mentions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sport_mention"
+          },
+          "minItems": 0
+        },
+        "clarifications": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/clarification"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "proposal_id",
+        "entry_id",
+        "entry_revision",
+        "entry_kind",
+        "food_mentions",
+        "sport_mentions",
+        "clarifications"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "entry_kind": {
+                "const": "meal"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "food_mentions": {
+                "minItems": 1
+              },
+              "sport_mentions": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "entry_kind": {
+                "const": "workout"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "sport_mentions": {
+                "minItems": 1
+              },
+              "food_mentions": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "entry_kind": {
+                "const": "mixed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "food_mentions": {
+                "minItems": 1
+              },
+              "sport_mentions": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "mass": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "const": "g"
+        },
+        "source": {
+          "$ref": "#/$defs/declared_source"
+        }
+      },
+      "required": [
+        "value",
+        "unit",
+        "source"
+      ]
+    },
+    "reference_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "type": "number",
+          "minimum": 0
+        },
+        "unit": {
+          "enum": [
+            "kcal",
+            "g",
+            "mg",
+            "ug"
+          ]
+        },
+        "basis_mass_g": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "source": {
+          "$ref": "#/$defs/catalog_source"
+        }
+      },
+      "required": [
+        "value",
+        "unit",
+        "basis_mass_g",
+        "source"
+      ]
+    },
+    "contribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "quantity": {
+          "$ref": "#/$defs/mass"
+        },
+        "reference": {
+          "$ref": "#/$defs/reference_value"
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "item_id",
+        "quantity",
+        "reference",
+        "value"
+      ]
+    },
+    "missing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "reason": {
+          "enum": [
+            "catalog_value_absent",
+            "quantity_absent",
+            "unit_absent",
+            "raw_cooked_unknown",
+            "food_unresolved",
+            "portion_mass_unknown",
+            "density_unknown",
+            "trace_unquantified"
+          ]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "required": [
+        "item_id",
+        "reason",
+        "detail",
+        "source"
+      ]
+    },
+    "nutrient": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nutrient_id"
+        },
+        "unit": {
+          "enum": [
+            "kcal",
+            "g",
+            "mg",
+            "ug"
+          ]
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "status": {
+          "enum": [
+            "complet",
+            "partiel",
+            "indéterminé"
+          ]
+        },
+        "provenance": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/contribution"
+          },
+          "minItems": 0
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/missing"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "unit",
+        "value",
+        "status",
+        "provenance",
+        "missing"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "status": {
+                  "const": "complet"
+                },
+                "value": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "provenance": {
+                  "minItems": 1
+                },
+                "missing": {
+                  "maxItems": 0
+                }
+              }
+            },
+            {
+              "properties": {
+                "status": {
+                  "const": "partiel"
+                },
+                "value": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "provenance": {
+                  "minItems": 1
+                },
+                "missing": {
+                  "minItems": 1
+                }
+              }
+            },
+            {
+              "properties": {
+                "status": {
+                  "const": "indéterminé"
+                },
+                "value": {
+                  "type": "null"
+                },
+                "provenance": {
+                  "maxItems": 0
+                },
+                "missing": {
+                  "minItems": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "id": {
+                  "const": "energy"
+                },
+                "unit": {
+                  "const": "kcal"
+                }
+              }
+            },
+            {
+              "properties": {
+                "id": {
+                  "enum": [
+                    "protein",
+                    "carbohydrate",
+                    "fat",
+                    "fiber",
+                    "sugars",
+                    "salt"
+                  ]
+                },
+                "unit": {
+                  "const": "g"
+                }
+              }
+            },
+            {
+              "properties": {
+                "id": {
+                  "pattern": "^(vitamin|mineral)_"
+                },
+                "unit": {
+                  "enum": [
+                    "mg",
+                    "ug"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "if": {
+            "properties": {
+              "unit": {
+                "const": "kcal"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "provenance": {
+                "items": {
+                  "properties": {
+                    "reference": {
+                      "properties": {
+                        "unit": {
+                          "const": "kcal"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "unit": {
+                "const": "g"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "provenance": {
+                "items": {
+                  "properties": {
+                    "reference": {
+                      "properties": {
+                        "unit": {
+                          "const": "g"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "unit": {
+                "const": "mg"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "provenance": {
+                "items": {
+                  "properties": {
+                    "reference": {
+                      "properties": {
+                        "unit": {
+                          "const": "mg"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "unit": {
+                "const": "ug"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "provenance": {
+                "items": {
+                  "properties": {
+                    "reference": {
+                      "properties": {
+                        "unit": {
+                          "const": "ug"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "java_nutrition_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1.0"
+        },
+        "kind": {
+          "const": "java_nutrition_report"
+        },
+        "meal_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "meal_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "selected_nutrients": {
+          "$ref": "#/$defs/selected_nutrients"
+        },
+        "nutrients": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nutrient"
+          },
+          "minItems": 1
+        },
+        "calculation": {
+          "const": "sum_known_contributions_v1"
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "meal_id",
+        "meal_revision",
+        "selected_nutrients",
+        "nutrients",
+        "calculation"
+      ]
+    },
+    "java_analysis_rejection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "0.1.0"
+        },
+        "kind": {
+          "const": "java_analysis_rejection"
+        },
+        "entry_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "proposal_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"
+        },
+        "analysis_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "current_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "code": {
+          "enum": [
+            "stale_revision",
+            "invalid_proposal"
+          ]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "schema_version",
+        "kind",
+        "entry_id",
+        "proposal_id",
+        "analysis_revision",
+        "current_revision",
+        "code",
+        "detail"
+      ]
+    }
+  }
+}

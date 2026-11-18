@@ -1,0 +1,47 @@
+{
+  "schema_version": "0.1.0",
+  "kind": "java_nutrition_report",
+  "meal_id": "MEAL-001",
+  "meal_revision": 2,
+  "selected_nutrients": [
+    "salt"
+  ],
+  "nutrients": [
+    {
+      "id": "salt",
+      "unit": "g",
+      "value": 0,
+      "status": "complet",
+      "provenance": [
+        {
+          "item_id": "D01",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_correction",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D01"
+            }
+          },
+          "reference": {
+            "value": 0,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D01",
+              "field": "nutrients.salt"
+            }
+          },
+          "value": 0.0
+        }
+      ],
+      "missing": []
+    }
+  ],
+  "calculation": "sum_known_contributions_v1"
+}

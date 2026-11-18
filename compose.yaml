@@ -1,0 +1,38 @@
+services:
+  java:
+    image: eclipse-temurin:17-jre
+    pull_policy: never
+    command: ["java", "-jar", "/app/llmsport-t04.jar"]
+    volumes:
+      - type: bind
+        source: ./java/target/llmsport-t04.jar
+        target: /app/llmsport-t04.jar
+        read_only: true
+        bind:
+          create_host_path: false
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: "8103"
+      PYTHON_BASE_URL: http://python:8104
+    ports:
+      - "127.0.0.1:8103:8103"
+    networks: [default, internal]
+    depends_on:
+      python:
+        condition: service_healthy
+
+  python:
+    image: llmsport-t04-python:local
+    pull_policy: never
+    build: ./python
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8104), timeout=1).close()"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+networks:
+  default: {}
+  internal:
+    internal: true
