@@ -50,7 +50,7 @@ Sur les POST, l’en-tête facultatif `Idempotency-Key` est commun aux deux doma
 
 Java lit d’abord la révision sans verrou et ferme la connexion avant l’appel à Python. Après réception, Java ouvre une transaction PostgreSQL `READ COMMITTED` et verrouille la clé si elle est fournie. Il relit ensuite la révision sous `SELECT … FOR UPDATE` sur l’entrée. Ce verrou protège le contrôle final, l’éventuelle correction, le résultat et sa clé jusqu’au commit. Une proposition devenue obsolète reçoit HTTP 409 avec le rejet `java_analysis_rejection` et les deux révisions. [Schéma et reprise des données](../java/src/main/resources/journal.sql) · [Scénario T03](../contracts/examples/revision-scenario.json)
 
-Appliquer `java/src/main/resources/journal.sql` dans le schéma PostgreSQL du journal avant de lancer la nouvelle version Java, après avoir arrêté l’ancien écrivain. Le script reprend la plus haute révision persistée pour chaque identifiant et laisse les résultats historiques relisibles. Les déclarations et les clés absentes de l’ancien schéma restent absentes.
+Appliquer `java/src/main/resources/journal.sql` dans le schéma PostgreSQL du journal avant de lancer la nouvelle version Java, après avoir arrêté l’ancien écrivain. Pour un identifiant découvert dans l’ancien stockage, le résultat le plus récent fixe le domaine et la révision de départ. Après un retour temporaire à l’ancien écrivain, rejouer le script avance la tête si un résultat plus récent existe dans le domaine de l’entrée. Une déclaration courante plus récente conserve sa place même en attente d’analyse. Les résultats historiques restent relisibles, y compris ceux qui portent un autre domaine pour le même identifiant. Les déclarations et les clés absentes de l’ancien schéma restent absentes.
 
 | Contrôle local sur données fictives | Résultat observé par HTTP et PostgreSQL |
 |---|---|
@@ -61,6 +61,7 @@ Appliquer `java/src/main/resources/journal.sql` dans le schéma PostgreSQL du jo
 | Même révision sans clé | Deux requêtes attendent le verrou de la même entrée. Seule celle qui correspond à la déclaration persistée aboutit. |
 | Rejeu ancien et échecs | La clé r1 renvoie le résultat initial après r2, y compris avec le pair arrêté. Les versions et les lignes SQL restent identiques après le rejeu, une proposition invalide, une correction refusée ou un appel d’analyse qui échoue. |
 | Migration sur données historiques | Résultats T06/T07 fictifs au format de l’ancien stockage. Leurs charges JSON restent relisibles. La plus haute révision devient courante et peut être corrigée. Réappliquer le script conserve l’état. |
+| Reprise après l’ancien écrivain | Des écritures SQL au format T06/T07 ajoutent un résultat repas r6 et un résultat sport r9 au même identifiant. La migration avance la tête repas de r5 à r6 et permet r7. Le résultat d’un autre domaine reste historique et une déclaration sport courante sans résultat garde sa révision. |
 
 `python -B scripts/verify_t08.py` exécute ces contrôles dans un schéma isolé. Le pair HTTP de test invoque le parseur déterministe du service Python et permet de maîtriser l’ordre et d’injecter des réponses invalides. Les contrôles T06/T07 lancent FastAPI. Les barrières de T08 attendent des événements ou des verrous observés côté PostgreSQL. Les observations portent sur l’exécution locale. [Vérification T08](../scripts/verify_t08.py)
 

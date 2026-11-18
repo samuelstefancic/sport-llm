@@ -305,7 +305,11 @@ def prepare_legacy(db):
         entry_kind text NOT NULL,
         payload jsonb NOT NULL,
         PRIMARY KEY (entry_id, entry_revision))""")
-    for entry, revision, kind, payload in LEGACY:
+    insert_legacy(db, LEGACY)
+
+
+def insert_legacy(db, results):
+    for entry, revision, kind, payload in results:
         db.execute("INSERT INTO journal_result VALUES (%s,%s,%s,%s::jsonb)",
                    (entry, revision, kind, json.dumps(payload)))
 
@@ -331,6 +335,39 @@ def legacy_results(db, port):
     assert snapshot(db) == before
     print("PASS migration depuis le journal T06/T07 peuplé : reprise de MAX(révision), historique lisible "
           "et inchangé, pas de déclaration inventée, correction courante possible, migration rejouable")
+
+    meal, previous_meal_result, _, legacy_meal = LEGACY[0]
+    workout, previous_workout_result, _, legacy_workout = LEGACY[-1]
+    pending_workout = content(workout, previous_workout_result + 2, "Course 5 km en 25 min")
+    pending = declare(port, "workouts", pending_workout)
+    request(port, "GET", f"/workouts/{workout}", expected=404)
+
+    meal_catchup = previous_meal_result + 2
+    other_domain_revision = meal_catchup + 3
+    legacy_correction = {**legacy_meal, "report": {**legacy_meal["report"], "meal_revision": meal_catchup}}
+    legacy_other_domain = {**legacy_workout, "entry_id": meal, "entry_revision": other_domain_revision}
+    # A temporarily restored T06/T07 writer only adds rows to journal_result.
+    insert_legacy(db, [(meal, meal_catchup, "meal", legacy_correction),
+                       (meal, other_domain_revision, "workout", legacy_other_domain)])
+    assert request(port, "GET", f"/meals/{meal}")["report"]["meal_revision"] == meal_catchup - 1
+    before = snapshot(db)
+    db.execute((ROOT / "java/src/main/resources/journal.sql").read_text(), prepare=False)
+    assert snapshot(db)[1:] == before[1:]
+    assert request(port, "GET", f"/meals/{meal}") == legacy_correction
+    request(port, "GET", f"/meals/{meal}/revisions/{meal_catchup}/declaration", expected=404)
+    assert request(port, "GET", f"/workouts/{meal}/revisions/{other_domain_revision}") == legacy_other_domain
+    request(port, "GET", f"/workouts/{meal}", expected=404)
+    assert request(port, "GET", declaration_path("workouts", pending_workout)) == pending
+    assert revisions(db, workout)[0] == (pending_workout["entry_revision"],)
+    request(port, "GET", f"/workouts/{workout}", expected=404)
+    next_meal = post(port, "meals", content(meal, meal_catchup + 1, "120 g de riz cuit"))
+    assert next_meal == request(port, "GET", f"/meals/{meal}")
+    assert request(port, "GET", f"/meals/{meal}/revisions/{meal_catchup}") == legacy_correction
+    before = snapshot(db)
+    db.execute((ROOT / "java/src/main/resources/journal.sql").read_text(), prepare=False)
+    assert snapshot(db) == before
+    print("PASS reprise après ancien écrivain : tête repas avancée de r5 à r6 puis correction r7 possible, "
+          "résultat sport r9 historique seulement et déclaration sport r3 en attente préservée")
 
 
 def verify():

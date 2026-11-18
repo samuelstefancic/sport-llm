@@ -15,9 +15,15 @@ CREATE TABLE IF NOT EXISTS journal_entry (
 );
 
 INSERT INTO journal_entry (entry_id, entry_kind, current_revision)
-SELECT DISTINCT ON (entry_id) entry_id, entry_kind, entry_revision
-FROM journal_result ORDER BY entry_id, entry_revision DESC
-ON CONFLICT (entry_id) DO NOTHING;
+SELECT DISTINCT ON (r.entry_id) r.entry_id, r.entry_kind, r.entry_revision
+FROM journal_result r
+LEFT JOIN journal_entry e ON e.entry_id = r.entry_id
+WHERE e.entry_id IS NULL
+   OR (e.entry_kind = r.entry_kind AND e.current_revision < r.entry_revision)
+ORDER BY r.entry_id, r.entry_revision DESC
+ON CONFLICT (entry_id) DO UPDATE SET current_revision = EXCLUDED.current_revision
+WHERE journal_entry.entry_kind = EXCLUDED.entry_kind
+  AND journal_entry.current_revision < EXCLUDED.current_revision;
 
 CREATE TABLE IF NOT EXISTS journal_declaration (
     entry_id text NOT NULL REFERENCES journal_entry(entry_id),
