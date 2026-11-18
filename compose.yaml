@@ -1,7 +1,47 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: llmsport
+      POSTGRES_DB: llmsport
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes:
+      - journal_data:/var/lib/postgresql/data
+      - type: bind
+        source: ./java/src/main/resources/journal.sql
+        target: /docker-entrypoint-initdb.d/10-journal.sql
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "llmsport", "-d", "llmsport"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+    networks: [internal]
+
+  catalog:
+    build: ./catalog
+    environment:
+      PGHOST: postgres
+      PGDATABASE: llmsport
+      PGUSER: llmsport
+    secrets: [db_password]
+    volumes:
+      - type: bind
+        source: ./data/dev/catalog.json
+        target: /fixtures/catalog.json
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
   java:
     image: eclipse-temurin:17-jre
-    pull_policy: never
     command: ["java", "-jar", "/app/llmsport-t04.jar"]
     volumes:
       - type: bind
@@ -14,25 +54,37 @@ services:
       SERVER_ADDRESS: 0.0.0.0
       SERVER_PORT: "8103"
       PYTHON_BASE_URL: http://python:8104
+      JOURNAL_JDBC_URL: jdbc:postgresql://postgres:5432/llmsport
+      JOURNAL_DB_USER: llmsport
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+    secrets:
+      - source: db_password
+        target: journal.db.password
     ports:
-      - "127.0.0.1:8103:8103"
+      - "127.0.0.1::8103"
     networks: [default, internal]
     depends_on:
+      catalog:
+        condition: service_completed_successfully
       python:
         condition: service_healthy
 
   python:
-    image: llmsport-t04-python:local
-    pull_policy: never
     build: ./python
     networks: [internal]
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8104), timeout=1).close()"]
       interval: 2s
       timeout: 2s
-      retries: 10
+      retries: 15
+
+volumes:
+  journal_data: {}
+
+secrets:
+  db_password:
+    file: ${LLMSPORT_DB_SECRET:?Indiquer le fichier local du mot de passe PostgreSQL}
 
 networks:
-  default: {}
   internal:
     internal: true

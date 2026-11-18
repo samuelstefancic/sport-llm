@@ -6,6 +6,7 @@ from copy import deepcopy
 import json
 import sys
 from time import monotonic
+from uuid import uuid4
 
 import psycopg
 from jsonschema import Draft202012Validator
@@ -20,8 +21,9 @@ def read(relative_path):
     return json.loads((ROOT / relative_path).read_text())
 
 
-def post(port, domain, body, key=None, **options):
-    headers = {"Idempotency-Key": key} if key is not None else None
+def post(port, domain, body, key=None, *, headers=None, **options):
+    if key is not None:
+        headers = {**(headers or {}), "Idempotency-Key": key}
     return request(port, "POST", f"/{domain}", body, headers=headers, **options)
 
 
@@ -170,31 +172,40 @@ def check_locked_revision(db, port, peer):
 
 def race_key(db, port, peer, first, second, key):
     # Hold the actual key lock until both independent write transactions have reached it.
+    request_ids = [str(uuid4()), str(uuid4())]
     with ThreadPoolExecutor(max_workers=2) as pool:
         with hold_lock(db, "hashtextextended('llmsport:journal:idempotency:' || %s, 0)", key) as supervisor:
-            futures = [pool.submit(post, port, "meals", body, key, expected=(200, 409), with_status=True)
-                       for body in (first, second)]
+            futures = [pool.submit(post, port, "meals", body, key, expected=(200, 409), with_status=True,
+                                   headers={"X-Correlation-ID": request_id})
+                       for body, request_id in zip((first, second), request_ids)]
             waits = wait_for_blockers(db, "SELECT pg_advisory_xact_lock(hashtextextended%",
                                       lambda w: len(w) == 2 and any(supervisor in pids for _, pids in w))
             assert len({pid for pid, _ in waits}) == 2 and not any(f.done() for f in futures)
             assert peer.count(first["entry_id"], 1) == 2
-        return [f.result(8) for f in futures]
+        return [f.result(8) for f in futures], request_ids
 
 
-def idempotency(db, port, peer):
+def idempotency(db, port, peer, java_log):
     r1 = content("T08-SAME-KEY", 1, "150 g de riz cuit")
     r1_reordered = {"selected_nutrients": ["energy", "protein", "carbohydrate", "fat"], **r1}
-    paired = race_key(db, port, peer, r1, r1_reordered, "same-key-r1")
+    paired, request_ids = race_key(db, port, peer, r1, r1_reordered, "same-key-r1")
     assert paired[0] == paired[1] and paired[0][0] == 200
     report = paired[0][1]
     assert revisions(db, r1["entry_id"]) == ((1,), [(1,)], [(1,)], [("same-key-r1",)])
     assert persisted(db, "meal", r1["entry_id"], 1) == report
+    traces = java_log.read_text()
+    assert all(f"correlation={request_id} outcome=proposal_accepted" in traces for request_id in request_ids)
+    outcomes = {request_id: [outcome for outcome in ("journal_committed", "idempotent_replay")
+                             if f"correlation={request_id} outcome={outcome}" in traces]
+                for request_id in request_ids}
+    assert sorted(outcomes.values()) == [["idempotent_replay"], ["journal_committed"]], outcomes
     print("PASS clé/charge identiques : deux transactions PostgreSQL concurrentes, deux HTTP 200 identiques, "
-          "une déclaration, un bilan et une clé")
+          "une déclaration, un bilan et une clé ; "
+          + ", ".join(f"{outcome[0]}={request_id}" for request_id, outcome in outcomes.items()))
 
     first = content("T08-CONFLICT-KEY", 1, "150 g de riz cuit")
     second = {**first, "text": "100 g de riz cuit"}
-    paired = race_key(db, port, peer, first, second, "conflict-key")
+    paired, _ = race_key(db, port, peer, first, second, "conflict-key")
     assert sorted(code for code, _ in paired) == [200, 409]
     (winner, saved), = [(body, result) for body, (code, result) in zip((first, second), paired) if code == 200]
     loser, = [body for body, (code, result) in zip((first, second), paired)
@@ -429,7 +440,7 @@ def verify():
         with controlled_peer(python_port) as peer:
             late_response(db, port, peer)
             check_locked_revision(db, port, peer)
-            r1, report = idempotency(db, port, peer)
+            r1, report = idempotency(db, port, peer, logs / "java.log")
             unkeyed_revision_race(dsn, db, port)
             invalid_attempts(db, port, peer)
             legacy_results(db, port)

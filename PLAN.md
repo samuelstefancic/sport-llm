@@ -4,14 +4,14 @@ Version 1.0 · 17 novembre 2026. Les charges sont des estimations intégrées et
 
 ## Décision et état de départ
 
-**P0 clôturé. T04 et T05 vérifiés en local.** Le [bilan de l’import PostgreSQL](PROJECT.md#t05--import-du-catalogue) sert de point de reprise. T06 attend son GO. RAG-01 est prévu en fin de P2.
+**P0 clôturé. T09 porte les vérifications finales de P1.** L’état des contrôles locaux et de la CI est tenu dans les [vérifications P1](documentation/p1-verification.md#t09--intégration-compose-et-pannes). T10 attend son GO. RAG-01 est prévu en fin de P2.
 
 | Élément | État vérifié | Preuve ou limite |
 |---|---|---|
 | T01, T02, T03 | P0 clôturé, 3 tickets terminés | Raisonnement sur le repas et les révisions, 30 cas fictifs dont 15 alimentaires, 10 sportifs et 5 mixtes/ambigus. 10 oracles de calcul et 10 d’ambiguïté figurent dans ce jeu de développement. [Bilan P0](documentation/p0-verification/rapport.md) · [Cas](data/dev/cases.json) · [Oracles](data/dev/oracles.md) |
-| Contrat | Version 0.1.0 validée statiquement | 25 exemples exécutés par le vérificateur, dont 14 conformes et 11 rejetés. Les courses en PostgreSQL et la chaîne applicative restent à vérifier en P1. [Schéma](contracts/analysis.schema.json) · [Sémantique](contracts/analysis.md) · [Manifeste](contracts/examples/manifest.json) |
+| Contrat | Version 0.1.0 exercée sur les cas fictifs | 25 exemples exécutés par le vérificateur, dont 14 conformes et 11 rejetés. La frontière HTTP et les courses du journal en PostgreSQL sont vérifiées en P1. [Schéma](contracts/analysis.schema.json) · [Sémantique](contracts/analysis.md) · [Vérifications P1](documentation/p1-verification.md) |
 | Skills | 7 présents, 21 scénarios fictifs évalués et 30 réponses avec rejeux | Le routage implicite a été observé pour `sn-plan-contracts` dans un essai isolé. [Preuves des skills](documentation/verification-skills-2026-11-17/rapport.md) · [Compte rendu du routage](documentation/p0-verification/rapport.md) |
-| Réalisation | 1 jalon sur 8 clôturé, 2/6 tickets P1 exécutés | Échange Spring Boot → FastAPI vérifié et catalogue fictif activé en PostgreSQL. Le calcul du repas et la persistance du journal restent à réaliser. |
+| Réalisation | P0 clôturé, P1 en vérification finale sur T09 | Échange Spring Boot → FastAPI, catalogue fictif, calcul du repas, journal sportif et contrôles transactionnels vérifiés. T09 vérifie l’ensemble via Compose et fournit la CI manuelle. |
 | RAG-01 | Cadrage prêt, tests préparés | 3 articles, 17 passages, 8 questions de recherche et 11 cas de synthèse. La [fiche RAG-01](documentation/RAG-01.md) porte le registre des passages, les corrigés et le barème. Le lot attend sa décision de lancement en fin de P2. |
 
 ## Produit et responsabilités
@@ -57,7 +57,7 @@ Les fourchettes T01–T03 répartissent les 8–12 h de base à titre indicatif.
 
 ## P1 — chaîne locale déterministe
 
-**Entrée du jalon.** P0 clôturé et GO local. L’ordre est T04 → T05 → T06 → T07 → T08 → T09. Dès T04, prévoir les interfaces nécessaires sans développer les tickets suivants d’avance. Les chemins d’application restent à fixer dans T04 d’après le workspace observé. La découverte de l’outillage local précède toute décision d’installation.
+**Entrée du jalon.** P0 clôturé et GO local. L’ordre retenu était T04 → T05 → T06 → T07 → T08 → T09. Les chemins d’application sont `java/`, `python/` et `catalog/`.
 
 | Ticket | Charge | Dépendance | Réalisation, exercice et preuve de sortie |
 |---|---:|---|---|
