@@ -4,9 +4,11 @@ from copy import deepcopy
 from pathlib import Path
 from shutil import copyfile
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest import TestCase, main
+from unittest.mock import patch
 
-from evaluate_t10 import FILES, PROTOCOL, ROOT, ProtocolError, frozen, semantic
+from evaluate_t10 import FILES, PROTOCOL, ROOT, ProtocolError, frozen, run_correction, semantic
 from t10_score import Checks, MISSING, decision, fraction, score, score_workout
 
 
@@ -85,6 +87,95 @@ class ScoringTest(TestCase):
         check = Checks()
         score_workout(check, CASES["S07"], sample)
         self.assertIn("invented_value", [f["category"] for f in check.failures])
+
+    def test_workout_null_summary_row_remains_a_case_error(self):
+        sample = workout("S01", [], [])
+        sample["body"]["summary"]["duration"] = None
+        observed = {"exchanges": {"final": sample}, "state": {"saved_matches": True}}
+        graded = score(CASES["S01"], "workout", CATALOG, lambda *_: True, observed)
+        self.assertFalse(graded["correct"])
+        self.assertEqual(graded["outcome"], "technical_error")
+        self.assertIn("final.summary.duration", [failure["field"] for failure in graded["failures"]])
+
+    def test_workout_malformed_nested_values_produce_contract_diagnostics(self):
+        for patches, field in [
+            ({"measures": {}}, "measures"), ({"measures": [0]}, "measures[0]"),
+            ({"measures": [{}]}, "measures[0].id"),
+            ({"measures": [{"id": "duration", "source": []}]}, "measures[0].source"),
+            ({"summary": {"duration": {"sources": None}}}, "summary.duration.sources"),
+            ({"summary": {"duration": {"sources": [None]}}}, "summary.duration.sources[0]"),
+            ({"source": []}, "source"),
+            ({"clarifications": {}}, "clarifications"), ({"clarifications": [None]}, "clarifications[0]"),
+            ({"clarifications": [{"question": None}]}, "clarifications[0].question"),
+        ]:
+            with self.subTest(field=field):
+                sample = workout("S01", [], [])
+                sample["body"].update(patches)
+                observed = {"exchanges": {"final": sample}, "state": {"saved_matches": True}}
+                result = score(CASES["S01"], "workout", CATALOG, lambda *_: True, observed)
+                self.assertEqual(result["outcome"], "technical_error")
+                self.assertTrue(any(failure["field"] == f"final.{field}" and failure["category"] == "contract"
+                                    for failure in result["failures"]))
+
+    def test_malformed_initial_workout_does_not_interrupt_correction(self):
+        initial = {"status": 200, "body": {"entry_kind": "workout", "summary": {"duration": None}}}
+        final = workout("S09", [], [])
+        exchanges = {}
+
+        def post(label, body):
+            exchanges[label] = {**(initial if label == "initial" else final), "request": body}
+            return exchanges[label]
+
+        def fetch(label, _):
+            if label == "previous_result_after":
+                return initial
+            return {"status": 200, "body": {"text": "Vélo : 60 min."}}
+
+        trace = SimpleNamespace(entry="S09", state={}, post=post, fetch=fetch)
+        with patch("evaluate_t10.side_effects"):
+            run_correction(None, trace, CASES["S09"], "workout_correction", {})
+        self.assertEqual(exchanges["final"]["request"]["text"], CASES["S09"]["input"])
+        self.assertFalse(trace.state["history_preserved"])
+        observed = {"exchanges": exchanges, "state": trace.state}
+        result = score(CASES["S09"], "workout_correction", CATALOG, lambda *_: True, observed)
+        self.assertEqual(result["outcome"], "technical_error")
+        self.assertIn("initial.summary.duration", [failure["field"] for failure in result["failures"]])
+
+    def test_f10_malformed_initial_report_does_not_interrupt_correction(self):
+        for body in ([], "invalid", {"report": None}):
+            with self.subTest(body=body):
+                initial = {"status": 200, "body": body}
+                final = {"status": 200, "body": {"report": {}}}
+                exchanges = {}
+
+                def post(label, request):
+                    exchanges[label] = {**(initial if label == "initial" else final), "request": request}
+                    return exchanges[label]
+
+                def fetch(label, _):
+                    if label == "previous_result_after":
+                        return initial
+                    return {"status": 200, "body": {"text": "150 g de riz cuit, 100 g de poulet cuit"}}
+
+                trace = SimpleNamespace(entry="F10", state={}, post=post, fetch=fetch)
+                with patch("evaluate_t10.side_effects"):
+                    run_correction(None, trace, CASES["F10"], "meal_correction", {})
+                self.assertEqual(exchanges["final"]["request"]["text"], CASES["F10"]["input"])
+                observed = {"exchanges": exchanges, "state": trace.state}
+                result = score(CASES["F10"], "meal_correction", CATALOG, lambda *_: True, observed)
+                self.assertEqual(result["outcome"], "technical_error")
+                path = "initial.report" if isinstance(body, dict) else "initial.body"
+                self.assertIn(path, [failure["field"] for failure in result["failures"]])
+
+    def test_non_object_rejection_is_a_case_error(self):
+        for case_id, route, status in (("F11", "late_meal", 409), ("F15", "reject_meal", 400)):
+            for body in (["error"], "error"):
+                with self.subTest(case=case_id, body=body):
+                    final = {"status": status, "body": body, "request": {"entry_id": case_id}}
+                    observed = {"exchanges": {"final": final}, "state": {}}
+                    result = score(CASES[case_id], route, CATALOG, lambda *_: False, observed)
+                    self.assertEqual(result["outcome"], "technical_error")
+                    self.assertIn("final.body", [failure["field"] for failure in result["failures"]])
 
     def test_positive_final_with_missing_peer_is_technical_error(self):
         sample = workout("S01", [], [])

@@ -284,17 +284,71 @@ def score_workout(check, case, exchange):
         check.equal("clarifications", questions, [], "clarification")
 
 
-def decision(exchange, contract_ok):
+def check_type(check, path, value, expected):
+    valid = isinstance(value, expected)
+    if not valid:
+        check.equal(path, type(value).__name__, expected.__name__)
+    return valid
+
+
+def objects_in(check, path, values):
+    if check_type(check, path, values, list):
+        for index, value in enumerate(values):
+            item_path = f"{path}[{index}]"
+            if check_type(check, item_path, value, dict):
+                yield item_path, value
+
+
+def check_source_shape(check, path, source):
+    if check_type(check, path, source, dict):
+        check_type(check, path + ".text", source.get("text", ""), str)
+
+
+def check_success_shape(check, label, body, *, workout, validate_branch):
+    """Valide les objets parcourus avant de calculer le score métier."""
+    before = len(check.failures)
+    if not check_type(check, label + ".body", body, dict):
+        return False
+
+    for path, question in objects_in(check, label + ".clarifications", body.get("clarifications", [])):
+        check_type(check, path + ".question", question.get("question", ""), str)
+
+    if workout:
+        if body.get("entry_kind") != "workout":
+            check.equal(label + ".entry_kind", body.get("entry_kind"), "workout")
+        check_source_shape(check, label + ".source", body.get("source", {}))
+        summary = body.get("summary")
+        if check_type(check, label + ".summary", summary, dict):
+            for field, row in summary.items():
+                path = f"{label}.summary.{field}"
+                if check_type(check, path, row, dict):
+                    for source_path, source in objects_in(check, path + ".sources", row.get("sources", [])):
+                        check_type(check, source_path + ".text", source.get("text", ""), str)
+        for path, measure in objects_in(check, label + ".measures", body.get("measures", [])):
+            check_type(check, path + ".id", measure.get("id"), str)
+            check_source_shape(check, path + ".source", measure.get("source", {}))
+    else:
+        report = body.get("report")
+        if check_type(check, label + ".report", report, dict) and not validate_branch(report, "java_nutrition_report"):
+            check.equal(label + ".report_schema_valid", False, True)
+    return len(check.failures) == before
+
+
+def decision(exchange, contract_ok, *, workout=False):
     if not contract_ok or exchange.get("transport_error") or exchange.get("status") is None or exchange["status"] >= 500:
         return "technical_error"
     if 400 <= exchange["status"] < 500:
         return "refusal"
+    if exchange["status"] != 200:
+        return "technical_error"
     body = exchange["body"]
     if body.get("clarifications"):
         return "clarification"
-    meal_values = body.get("report", {}).get("nutrients", [])
-    workout_values = body.get("summary", {}).values() if body.get("activity") else ()
-    if any(type(row.get("value")) in (int, float) for row in (*meal_values, *workout_values)):
+    if workout:
+        values = body["summary"].values() if body.get("activity") else ()
+    else:
+        values = body.get("report", {}).get("nutrients", [])
+    if any(type(row.get("value")) in (int, float) for row in values):
         return "automatic"
     return "abstention"
 
@@ -309,16 +363,23 @@ def score(case, route, catalog, validate_branch, observed):
     status = final.get("status")
     expected_status = 409 if route == "late_meal" else 400 if route.startswith("reject_") else 200
     check.equal("final.http_status", status, expected_status)
-    contract_ok = isinstance(final.get("body"), dict) and not final.get("transport_error")
-    if status == 200:
-        if route in {"workout", "workout_correction", "reject_workout"}:
-            contract_ok = contract_ok and body.get("entry_kind") == "workout" and isinstance(body.get("summary"), dict)
-        else:
-            contract_ok = contract_ok and validate_branch(body.get("report"), "java_nutrition_report")
+    contract_ok = not final.get("transport_error")
+    if status != 200:
+        contract_ok = check_type(check, "final.body", final.get("body"), dict) and contract_ok
+    workout = "workout" in route
     if route == "late_meal" and status == 409:
         contract_ok = contract_ok and validate_branch(body, "java_analysis_rejection")
+    final_proposal = {}
     for label, exchange in exchanges.items():
         peer = exchange.get("peer")
+        if exchange.get("status") == 200:
+            response_body = exchange.get("body")
+            if label in {"final", "initial", "current", "corrected", "previous_result_after"}:
+                valid_shape = check_success_shape(check, label, response_body, workout=workout,
+                                                  validate_branch=validate_branch)
+            else:
+                valid_shape = check_type(check, label + ".body", response_body, dict)
+            contract_ok = contract_ok and valid_shape
         if exchange.get("transport_error") or (exchange.get("status") or 0) >= 500:
             check.equal(label + ".transport", exchange.get("transport_error") or exchange["status"], None, "runtime")
         if label in {"final", "initial", "corrected"}:
@@ -333,13 +394,16 @@ def score(case, route, catalog, validate_branch, observed):
                                 {**fields(exchange["request"], ("entry_id", "entry_revision")), "entry_kind": wanted_kind},
                                 "source_mismatch")
                     if exchange.get("status") == 200 and wanted_kind == "workout":
-                        pair = exchange.get("body") or {}
+                        pair = exchange.get("body")
+                        pair = pair if isinstance(pair, dict) else {}
                         check.equal(label + ".workout_proposal_binding",
                                     fields(pair, ("proposal_id", "proposal_schema_version")),
                                     {"proposal_id": payload.get("proposal_id"),
                                      "proposal_schema_version": payload.get("schema_version")}, "source_mismatch")
                 if label == "final":
                     contract_ok = contract_ok and valid_peer
+                    if valid_peer:
+                        final_proposal = peer["body"]
     check.equal("final.contract_valid", bool(contract_ok), True)
     if route.startswith("reject_"):
         check.equal("final.rejection", body.get("error"), oracle["error"]["code"])
@@ -357,13 +421,13 @@ def score(case, route, catalog, validate_branch, observed):
             ("real_proposal_held_until_r2", True),
         ]:
             check.equal("late." + field, state.get(field), expected, "unsafe_write")
-        source = (final.get("peer") or {}).get("body") or {}
-        check.equal("rejection.proposal_binding", body.get("proposal_id"), source.get("proposal_id"), "source_mismatch")
+        check.equal("rejection.proposal_binding", body.get("proposal_id"), final_proposal.get("proposal_id"),
+                    "source_mismatch")
         check.equal("rejection.entry_id", body.get("entry_id"), final.get("request", {}).get("entry_id"), "source_mismatch")
         energy = state.get("current_energy") or {}
         check.equal("current_energy", fields(energy, ("value", "unit", "status")), oracle["current_energy"],
                     "wrong_calculation")
-        quantities = [fields(item.get("quantity") or {}, ("value", "unit")) for item in source.get("food_mentions", [])]
+        quantities = [fields(item.get("quantity") or {}, ("value", "unit")) for item in final_proposal.get("food_mentions", [])]
         check.equal("late.proposal.precorrection_quantities", quantities,
                     [mention["quantity"] for mention in case["state"]["proposal_food_mentions"]], "source_mismatch")
     else:
@@ -381,7 +445,7 @@ def score(case, route, catalog, validate_branch, observed):
             if "previous_energy" in oracle:
                 check.equal("journal.previous_energy", state.get("previous_energy"), oracle["previous_energy"],
                             "wrong_calculation")
-    outcome = decision(final, contract_ok and not observed.get("runtime_error"))
+    outcome = decision(final, contract_ok and not observed.get("runtime_error"), workout=workout)
     if outcome == "automatic" and oracle["action"] in {"reject_invalid_input", "reject_stale_analysis", "clarify"}:
         check.equal("decision.safe", outcome, oracle["action"],
                     "unsafe_write" if oracle["action"].startswith("reject_") else "invented_value")

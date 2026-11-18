@@ -209,9 +209,16 @@ def snapshot(db):
             for table, order in TABLES.items()}
 
 
+def nutrition_report(body):
+    report = body.get("report") if isinstance(body, dict) else None
+    return report if isinstance(report, dict) else {}
+
+
 def energy(body):
-    rows = (body or {}).get("report", {}).get("nutrients", [])
-    return next((row for row in rows if row["id"] == "energy"), {})
+    rows = nutrition_report(body).get("nutrients")
+    if not isinstance(rows, list):
+        return {}
+    return next((row for row in rows if isinstance(row, dict) and row.get("id") == "energy"), {})
 
 
 def side_effects(db, trace, final, revision):
@@ -248,18 +255,25 @@ def run_correction(db, trace, case, route, selected):
     side_effects(db, trace, final, state["current_revision"])
     previous_after = trace.fetch("previous_result_after", "/revisions/1")
     original_after = trace.fetch("previous_declaration_after", "/revisions/1/declaration")
-    old_energy = energy(previous.get("body"))
-    trace.state.update(
-        history_preserved=previous.get("status") == original.get("status") == previous_after.get("status")
+    original_body = original.get("body")
+    trace.state["history_preserved"] = (
+        previous.get("status") == original.get("status") == previous_after.get("status")
         == original_after.get("status") == 200
         and previous.get("body") == previous_after.get("body") and original.get("body") == original_after.get("body")
-        and (original.get("body") or {}).get("text") == old,
-        previous_energy={"value": old_energy.get("value"), "unit": old_energy.get("unit"),
-                         "meal_revision": (previous.get("body") or {}).get("report", {}).get("meal_revision")},
+        and isinstance(original_body, dict) and original_body.get("text") == old
     )
-    if route == "workout_correction":
-        duration = (previous.get("body") or {}).get("summary", {}).get("duration", {})
-        trace.state["history_preserved"] &= (
+    previous_body = previous.get("body")
+    if route == "meal_correction":
+        old_energy = energy(previous_body)
+        trace.state["previous_energy"] = {
+            "value": old_energy.get("value"), "unit": old_energy.get("unit"),
+            "meal_revision": nutrition_report(previous_body).get("meal_revision"),
+        }
+    else:
+        trace.state["previous_energy"] = {"value": None, "unit": None, "meal_revision": None}
+        summary = previous_body.get("summary") if isinstance(previous_body, dict) else None
+        duration = summary.get("duration") if isinstance(summary, dict) else None
+        trace.state["history_preserved"] &= isinstance(duration, dict) and (
             duration.get("value"), duration.get("unit")) == (quantity["value"], quantity["unit"])
 
 
@@ -285,13 +299,14 @@ def run_late(db, trace, case, gate, selected):
     after = snapshot(db)
     readback = trace.fetch("current")
     reread_decl = trace.fetch("current_declaration", "/revisions/2/declaration")
+    reread_body = reread_decl.get("body")
     trace.state.update(
         real_proposal_held_until_r2=reached and committed_before_release and gate["released_while_waiting"],
         sql_unchanged=after == before,
         write_count=sum(len(set(map(repr, before[table])) ^ set(map(repr, after[table]))) for table in TABLES),
         current_food_mentions_unchanged=corrected_decl.get("status") == reread_decl.get("status") == 200
         and corrected_decl.get("body") == reread_decl.get("body")
-        and (reread_decl.get("body") or {}).get("text") == current["text"],
+        and isinstance(reread_body, dict) and reread_body.get("text") == current["text"],
         current_report_unchanged=correction.get("status") == readback.get("status") == 200
         and correction.get("body") == readback.get("body"),
         current_energy=energy(readback.get("body")),
