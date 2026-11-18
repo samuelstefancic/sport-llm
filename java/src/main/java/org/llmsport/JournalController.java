@@ -48,7 +48,10 @@ class JournalController {
         JsonNode proposal = null;
         try {
             JsonNode replay = store.prepare(declaration, key);
-            if (replay != null) return ok(id, replay);
+            if (replay != null) {
+                LOG.info("correlation={} outcome=idempotent_replay", id);
+                return ok(id, replay);
+            }
             boolean meal = declaration.kind().equals("meal");
             var workout = meal ? null : WorkoutCalculator.parse(declaration.text());
             var received = meal ? python.analyze(declaration.envelope(), id)
@@ -57,9 +60,11 @@ class JournalController {
             JsonNode accepted = (JsonNode) received.getBody();
             proposal = accepted;
             var body = declaration.body();
-            return ok(id, store.apply(declaration, key, db -> meal
+            var result = store.apply(declaration, key, db -> meal
                     ? MealCalculator.calculate(db, mapper, body, accepted)
-                    : workout.calculate(mapper, body, accepted)));
+                    : workout.calculate(mapper, body, accepted));
+            LOG.info("correlation={} outcome={}", id, result.replayed() ? "idempotent_replay" : "journal_committed");
+            return ok(id, result.payload());
         } catch (JournalStore.Conflict e) {
             if (e.currentRevision > 0 && proposal != null) {
                 return stale(id, declaration, proposal, e.currentRevision);

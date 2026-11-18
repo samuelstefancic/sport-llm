@@ -23,8 +23,8 @@ def source(entry, text):
             "input_revision": entry["entry_revision"], "text": text}
 
 
-def saved(db, port, entry, activity):
-    result = request(port, "POST", "/workouts", entry)
+def saved(db, port, entry, activity, *, headers=None):
+    result = request(port, "POST", "/workouts", entry, headers=headers)
     entry_id = entry["entry_id"]
     assert (result["entry_kind"], result["entry_id"], result["entry_revision"], result["activity"]) == (
         "workout", entry_id, 1, activity)

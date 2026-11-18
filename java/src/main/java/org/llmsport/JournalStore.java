@@ -17,6 +17,8 @@ class JournalStore {
 
     private record Entry(String kind, long revision) {}
 
+    record AppliedResult(JsonNode payload, boolean replayed) {}
+
     static final class Conflict extends Exception {
         final long currentRevision;
 
@@ -62,7 +64,7 @@ class JournalStore {
         }
     }
 
-    JsonNode apply(JournalDeclaration declaration, String key, Calculation calculation)
+    AppliedResult apply(JournalDeclaration declaration, String key, Calculation calculation)
             throws SQLException, IOException, Conflict {
         try (var db = open()) {
             db.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
@@ -70,7 +72,7 @@ class JournalStore {
             if (key != null) {
                 lockKey(db, key);
                 JsonNode replay = replay(db, declaration, key);
-                if (replay != null) return replay;
+                if (replay != null) return new AppliedResult(replay, true);
             }
             Entry current = lockEntry(db, declaration);
             checkTarget(current, declaration);
@@ -84,7 +86,7 @@ class JournalStore {
             writeResult(db, declaration, payload);
             if (key != null) remember(db, declaration, key);
             db.commit();
-            return payload;
+            return new AppliedResult(payload, false);
         }
     }
 

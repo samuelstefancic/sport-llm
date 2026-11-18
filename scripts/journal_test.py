@@ -60,7 +60,7 @@ def request(port, method, path, body=None, *, headers=None, expected=200, with_s
         reply = connection.getresponse()
         raw = reply.read()
         statuses = (expected,) if isinstance(expected, int) else expected
-        assert reply.status in statuses, (method, path, reply.status, raw[:600])
+        assert reply.status in statuses, (method, path, reply.status, statuses)
         assert reply.getheader("X-Correlation-ID") == headers["X-Correlation-ID"]
         payload = json.loads(raw) if raw else None
         return (reply.status, payload) if with_status else payload

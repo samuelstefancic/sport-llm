@@ -39,9 +39,9 @@ def missing(parts):
                    c["source"]["field"]) for c in parts)
 
 
-def check_oracle(db, port, meal, oracle_name):
+def check_oracle(db, port, meal, oracle_name, *, headers=None):
     expected = read(ROOT / "contracts/examples" / oracle_name)
-    result = request(port, "POST", "/meals", meal)
+    result = request(port, "POST", "/meals", meal, headers=headers)
     actual = result["report"]
     schema = read(ROOT / "contracts/analysis.schema.json")
     Draft202012Validator({**schema, "oneOf": [{"$ref": "#/$defs/java_nutrition_report"}]}).validate(actual)

@@ -1,0 +1,10 @@
+services:
+  python:
+    command: ["python", "-B", "-m", "uvicorn", "t09_invalid:app", "--app-dir", "/test", "--host", "0.0.0.0", "--port", "8104", "--no-access-log"]
+    volumes:
+      - type: bind
+        source: ./scripts/t09_invalid.py
+        target: /test/t09_invalid.py
+        read_only: true
+        bind:
+          create_host_path: false

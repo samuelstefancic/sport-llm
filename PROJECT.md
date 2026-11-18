@@ -37,9 +37,9 @@ Unité, base de référence, cru/cuit et quantité doivent permettre le calcul ;
 
 **Premier cas de référence [T03-SEL-001](contracts/examples/java-salt-reference.json)**, intégralement fictif : 100 g de chacun des trois aliments, riz cuit, poulet cuit et courgettes cuites. Le riz est corrigé de 150 à 100 g. Sel du riz explicitement 0 g/100 g ; sel du poulet et des courgettes absent. Attendu validé par l'apprenant : **0 g — sous-total partiel**, deux contributions manquantes. Dans le même bilan : protéines 34,5 g complètes, énergie 295 kcal partielles, glucides et lipides indéterminés faute de valeurs. La fixture est une variante versionnée `DEMO-FOOD 0.1-salt-variant` dérivée de 0.1, pas une modification silencieuse du catalogue original. L'ancienne fixture de cadrage reste conservée dans les preuves du socle ; l'exemple lié ici suit le schéma canonique 0.1.0.
 
-**T03 finalisé en P0** : [schéma canonique 0.1.0](contracts/analysis.schema.json), [sémantique et contrôle transactionnel Java](contracts/analysis.md), [25 exemples nominaux/ambigus/invalides](contracts/examples/manifest.json). Validation locale exécutée : 14 conformes, 11 rejetés comme attendu. Les réponses Python sont validées contre leur branche propre ; Java seul construit le bilan. Une proposition r1 revenue après correction r2 est structurellement valide mais doit être rejetée atomiquement par Java en P1. T04 a depuis vérifié la branche de réception sur HTTP. Le contrôle transactionnel reste prévu en T08.
+**T03 finalisé en P0** avec le [schéma canonique 0.1.0](contracts/analysis.schema.json), la [sémantique](contracts/analysis.md) et les [25 exemples](contracts/examples/manifest.json), dont 14 conformes et 11 rejetés comme prévu. T04 a vérifié la branche de réception sur HTTP. T08 a vérifié le rejet transactionnel d’une proposition r1 devenue obsolète après correction r2.
 
-**T06 en P1** doit calculer plusieurs apports en Java et démontrer des statuts différents pour un même repas, confrontés aux oracles manuels. **P4** ajoute le sélecteur et le bilan, avec source/manques consultables et distinction visuelle absence/zéro/sous-total.
+**T06 en P1** a confronté le calcul Java des apports aux oracles manuels, avec des statuts différents pour un même repas. **P4** ajoute le sélecteur et le bilan, avec source et manques consultables et distinction entre absence, zéro et sous-total.
 
 ## Contrats et exploitation à préserver
 
@@ -47,7 +47,7 @@ Java garde contrôle transactionnel des corrections, révisions et idempotence. 
 
 ## État et effort
 
-**P0 clôturé. P1 en cours, T04 et T05 vérifiés en local. T06 en attente de décision.** T01 a établi le raisonnement sur les protéines complètes, l’énergie partielle, le sel partiel avec un zéro connu et la comparaison atomique de révision. T02/T03 et leurs contrôles locaux ont été réalisés en P0. Une demande neutre isolée a conduit à la lecture de sn-plan-contracts. [Bilan et preuves de clôture P0](documentation/p0-verification/rapport.md).
+**P0 clôturé. P1 en vérification finale sur T09. T10 attend son GO.** T01 a établi le raisonnement sur les protéines complètes, l’énergie partielle, le sel partiel avec un zéro connu et la comparaison atomique de révision. T02/T03 et leurs contrôles locaux ont été réalisés en P0. Une demande neutre isolée a conduit à la lecture de sn-plan-contracts. [Bilan P0](documentation/p0-verification/rapport.md) · [Vérifications P1](documentation/p1-verification.md)
 
 P0 : référence historique 8–12 h ; ébauche 4–8 h, estimation distincte non substituée. Le cadrage précédent proposait +1–2 h (9–14 h) sans création/vérification des sept skills. L'option C ajoute maintenant ce lot ; son temps observé et son impact sont consignés dans le rapport de vérification du lot, sans compter deux fois le cadrage. Il ne représente pas le temps d'apprentissage humain.
 
@@ -61,7 +61,7 @@ Lot option C réalisé le 17 novembre 2026 : [preuves et effort observé](docume
 
 Les futurs bilans d'évaluation publieront corrects/total et, pour l'acceptation automatique, corrects acceptés/acceptés avec leur couverture et les erreurs critiques par catégorie ; une précision avec zéro acceptation est indéfinie. Clarifications et abstentions restent distinctes. Les objectifs chiffrés de l'ébauche sont des hypothèses, pas des mesures ni des seuils validés. Les 30 cas servent à développer ; toute sélection sur ces cas exclut leur emploi comme test final indépendant.
 
-Après T04 viennent T05 (source/import versionné), T06 (calcul multi-apports Java), puis sport, corrections/idempotence et évaluation selon le plan. RAG-01 est prévu en fin de P2.
+La reprise après P1 passe par T10 et la mesure de la baseline déterministe, sur décision de lancement. RAG-01 est prévu en fin de P2.
 
 ## T04 — échange HTTP local
 
@@ -85,10 +85,9 @@ Le [contrôle CI local](scripts/verify_t04.py) a terminé avec le code 0. Le rej
 
 ```sh
 python3 -B scripts/verify_t04.py
-docker compose config --quiet
 ```
 
-La première commande Python construit le JAR (`mvn -o -q -f java/pom.xml package`) puis exécute les cas sur deux ports temporaires de `127.0.0.1`. L’environnement Codex a nécessité une permission d’écoute locale. Pour lancer les services manuellement après construction, utiliser deux terminaux à la racine :
+La commande Python construit le JAR (`mvn -o -q -f java/pom.xml package`) puis exécute les cas sur deux ports temporaires de `127.0.0.1`. L’environnement Codex a nécessité une permission d’écoute locale. Pour lancer les services manuellement après construction, utiliser deux terminaux à la racine :
 
 ```sh
 # Terminal Python
@@ -103,7 +102,7 @@ Depuis un troisième terminal :
 curl -i --max-time 5 -H 'Content-Type: application/json' --data '{"entry_id":"MEAL-001","entry_revision":2,"text":"mon accompagnement"}' http://127.0.0.1:8103/analysis
 ```
 
-La [configuration Compose](compose.yaml) et le [Dockerfile Python](python/Dockerfile) sont préparés. La validation de configuration a réussi avec Compose 2.31.0-desktop.2. Une fois le JAR et les images `eclipse-temurin:17-jre` et `llmsport-t04-python:local` disponibles localement, le démarrage prévu est `docker compose up --no-build --pull never`. L’exécution en conteneurs et la CI hébergée restent non exécutées.
+La configuration Compose de T04 a été remplacée par le parcours avec PostgreSQL décrit dans [T09](documentation/p1-verification.md#t09--intégration-compose-et-pannes).
 
 **Effort et apprentissage.** Environ 10 min écoulées pour le lot assisté, de 20 h 42 à 20 h 52, heure de Paris, dont environ 8 min jusqu’au dernier contrôle HTTP. Travail en parallèle, 0 € de dépense externe. L’estimation pédagogique initiale de 6–9 h inclut la pratique autonome, dont la durée reste à mesurer. L’utilisateur a expliqué correctement pourquoi Java doit comparer le couple `(entry_id, entry_revision)` et rejeter `MEAL-002` reçu pour `MEAL-001` sans écrire dans le journal. Le code a été réalisé avec assistance.
 
@@ -135,8 +134,8 @@ Le premier appel renvoie `activated`, le deuxième `already_imported` avec la m�
 
 **Ciqual, métadonnées consultées le 18 novembre 2026.** L’Anses publie la *Table de composition nutritionnelle des aliments Ciqual 2025*. Le dépôt Recherche Data Gouv porte la version 1.0 du 19 novembre 2025 et le DOI `10.57745/RDMHWY`. La **Licence Ouverte Etalab 2.0** autorise l’extraction, l’adaptation, la redistribution et l’exploitation commerciale avec mention du producteur et de la date de mise à jour. L’Anses demande d’indiquer la source et la version et de préserver le sens des données. Une future acquisition devra garder les valeurs originales, tracer les transformations et distinguer valeur manquante, trace, borne et zéro. Attribution prévue : Anses, 2025, *Table de composition nutritionnelle des aliments Ciqual*, version 1.0 du 19 novembre 2025. Acquisition et import des données réelles attendent une décision distincte. [Notice officielle](https://doi.org/10.57745/RDMHWY) · [Documentation Anses, §1 et §3.2](https://ciqual.anses.fr/cms/sites/default/files/inline-files/Table%20Ciqual%202025%20doc%20FR_2025_11_19.pdf) · [Licence Ouverte 2.0](https://www.data.gouv.fr/pages/legal/licences/etalab-2-0)
 
-**Après GO T06**, faire lire à Java les références du catalogue actif et calculer le cas fictif F02 en décimal, puis comparer le résultat à l’oracle P0. RAG-01 reste prévu en fin de P2.
+T06 a calculé le cas fictif F02 en décimal à partir du catalogue actif et l’a confronté à l’oracle P0. [Vérification T06](documentation/p1-verification.md#t06--bilan-alimentaire)
 
 ## Livraison des chaînes P1
 
-Le [suivi des vérifications T06 à T09](documentation/p1-verification.md) consigne les commandes, limites, exercices et preuves de livraison. Le mandat s’arrête avant T10.
+Le [suivi des vérifications T06 à T09](documentation/p1-verification.md) consigne les commandes, résultats et exercices. La [livraison T09](documentation/p1-verification.md#t09--intégration-compose-et-pannes) donne la reproduction du parcours Compose et du workflow **Vérifications P1**. La PR T09 porte le bilan final de livraison. T10 attend son GO.
