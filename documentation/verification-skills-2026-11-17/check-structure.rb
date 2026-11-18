@@ -21,14 +21,15 @@ results = Dir.glob(root + '/.agents/skills/*/SKILL.md').sort.map do |file|
   raise 'Unexpected fields' unless (meta.keys - ['name', 'description', 'metadata']).empty?
   raise 'Unfinished placeholder' if content.include?('[TODO:')
   links = content.scan(/\[[^\]]+\]\(([^)]+)\)/).flatten
+  links.reject! { |link| link.start_with?('https://', 'http://') }
   checked = links.map do |link|
     resolved = File.expand_path(link.split('#')[0], File.dirname(file))
-    raise "Missing reference: #{resolved}" unless File.file?(resolved)
+    raise "Missing reference: #{resolved}" unless File.file?(resolved) || File.directory?(resolved)
     {link: link, resolved: resolved, exists: true}
   end
   {name: name, file: file, status: 'PASS', sha256: Digest::SHA256.hexdigest(content), references: checked}
 end
-raise 'Expected seven skills' unless results.size == 7
+raise 'Expected nine skills' unless results.size == 9
 report = {observed_at: Time.now.utc.iso8601, command: 'ruby documentation/verification-skills-2026-11-17/check-structure.rb',
           parser: 'Ruby YAML.safe_load (Psych)',
           scope: 'Frontmatter YAML, naming, required fields, placeholders, local links; not behavior or discovery',
