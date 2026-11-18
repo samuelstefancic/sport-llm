@@ -1,0 +1,180 @@
+{
+  "protocol_version": "1.0.0",
+  "corpus_id": "llmsport-development",
+  "corpus_version": "0.1.0",
+  "catalog_id": "DEMO-FOOD",
+  "catalog_version": "0.2.0",
+  "partitions": {
+    "development": 30
+  },
+  "annotation_counts": {
+    "calculation": 10,
+    "ambiguity": 10
+  },
+  "fictitious": true,
+  "hashes": {
+    "data/dev/cases.json": "e29ac8293c809f8051d612d6e6409e9857cb93d184c5366515e3898782f2e98c",
+    "data/dev/oracles.md": "40ac10da01e62203e3da5fa6637fbce93d42c9a3c84448dc52ea2eecfefd7c8f",
+    "data/dev/catalog.json": "2ec60064489c0a4ecc4e7fc1865ddb1652c8af73fbc4dc11dfbcb3e793073ef4",
+    "contracts/analysis.schema.json": "f827b1c2674f8e74224597d95e68c268872e4847057e65d674c6e535ac349bc9"
+  },
+  "exclusions": {
+    "M01": "P1 expose les domaines séparément ; aucun service ne sépare du texte mixte et ne renvoie les deux résultats.",
+    "M02": "Aucun triage mixte P1 ne peut produire la première clarification sans que le banc choisisse lui-même le domaine.",
+    "M03": "P1 exige une cible explicite dans le chemin ou le corps ; aucune résolution de cible sur texte seul.",
+    "M04": "Aucune sélection des mesures à travers les deux domaines pour une demande P1 unique.",
+    "M05": "Aucune création mixte P1 et aucune clé d’idempotence qui couvre les deux écritures en une opération."
+  },
+  "cases": [
+    [
+      "F01",
+      "meal-rice-chicken-zucchini",
+      "meal"
+    ],
+    [
+      "F02",
+      "meal-complete-four-defaults",
+      "meal"
+    ],
+    [
+      "F03",
+      "meal-rice-chicken-zucchini",
+      "meal"
+    ],
+    [
+      "F04",
+      "meal-rice-chicken-zucchini",
+      "meal"
+    ],
+    [
+      "F05",
+      "meal-rice-chicken-quantity-missing",
+      "meal"
+    ],
+    [
+      "F06",
+      "rice-raw-cooked",
+      "meal"
+    ],
+    [
+      "F07",
+      "rice-portion-unknown",
+      "meal"
+    ],
+    [
+      "F08",
+      "lentils-volume-mass",
+      "meal"
+    ],
+    [
+      "F09",
+      "unknown-home-recipe",
+      "meal"
+    ],
+    [
+      "F10",
+      "rice-chicken-correction",
+      "meal_correction"
+    ],
+    [
+      "F11",
+      "rice-chicken-correction",
+      "late_meal"
+    ],
+    [
+      "F12",
+      "water-known-zero",
+      "meal"
+    ],
+    [
+      "F13",
+      "rice-quantity-scaling",
+      "meal"
+    ],
+    [
+      "F14",
+      "lentils-micronutrients",
+      "meal"
+    ],
+    [
+      "F15",
+      "negative-food-quantity",
+      "reject_meal"
+    ],
+    [
+      "S01",
+      "run-two-intervals",
+      "workout"
+    ],
+    [
+      "S02",
+      "run-distance-units",
+      "workout"
+    ],
+    [
+      "S03",
+      "squat-explicit-sets",
+      "workout"
+    ],
+    [
+      "S04",
+      "cycle-duration-units",
+      "workout"
+    ],
+    [
+      "S05",
+      "run-missing-measures",
+      "workout"
+    ],
+    [
+      "S06",
+      "run-distance-unit-missing",
+      "workout"
+    ],
+    [
+      "S07",
+      "squat-load-unit-missing",
+      "workout"
+    ],
+    [
+      "S08",
+      "negative-sport-duration",
+      "reject_workout"
+    ],
+    [
+      "S09",
+      "cycle-duration-correction",
+      "workout_correction"
+    ],
+    [
+      "S10",
+      "mobility-known-zero",
+      "workout"
+    ],
+    [
+      "M01",
+      "run-rice-mixed",
+      "excluded"
+    ],
+    [
+      "M02",
+      "mixed-units-missing",
+      "excluded"
+    ],
+    [
+      "M03",
+      "mixed-correction-target-missing",
+      "excluded"
+    ],
+    [
+      "M04",
+      "rice-run-selected-measures",
+      "excluded"
+    ],
+    [
+      "M05",
+      "run-rice-mixed",
+      "excluded"
+    ]
+  ]
+}
