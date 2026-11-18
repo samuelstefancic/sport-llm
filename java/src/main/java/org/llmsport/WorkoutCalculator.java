@@ -26,14 +26,17 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
     private static final Pattern NUMBER_FORMAT = pattern("[+−-]?(?:[0-9]+|[0-9]{1,3}(?:"
             + GROUP_SPACE + "[0-9]{3})+)(?:[.,][0-9]+)?");
     private static final Pattern GROUP_SEPARATOR = pattern(GROUP_SPACE);
+    private static final String COMPOUND_UNIT_COMPONENT =
+            "(?:h|heures?|min|minutes?|s|secondes?|km|kilom[èe]tres?|m|m[èe]tres?|j|jours?|semaines?|mois|ans?)";
     private static final Pattern COMPOUND_UNIT_TAIL = pattern("\\s*[/⁄∕·⋅*^²³⁻]|\\s+par\\s+"
-            + "(?:h|heures?|min|minutes?|s|secondes?|km|kilom[èe]tres?|m|m[èe]tres?|j|jours?|semaines?|mois|ans?)\\b");
+            + COMPOUND_UNIT_COMPONENT + "\\b|\\s+" + COMPOUND_UNIT_COMPONENT + "\\s*⁻[⁰¹²³⁴⁵⁶⁷⁸⁹]+");
     private static final Pattern LABEL = pattern("\\b(dur[ée]e|distance(?:\\s+parcourue)?|charge)\\s*:?\\s*$");
     private static final Pattern RUN_DISTANCE = pattern("\\b(couru|course(?:\\s+à\\s+pied)?)\\s*:?\\s*$");
     private static final Pattern LIFT_LOAD = pattern("\\b(?:r[ée]p[ée]titions?|reps?)\\s*,?\\s+à\\s*$");
     private static final Pattern ELAPSED_TIME = pattern("\\bpendant\\s*$");
     private static final Pattern NEGATED = pattern("\\b(?:pas|ni|au lieu de)\\s*$");
     private static final Pattern ADDITIVE = pattern("\\s*,?\\s*(?:puis|et)\\s*");
+    private static final Pattern ALTERNATIVE = pattern("\\s+ou\\s+");
     private static final Pattern PER_SET = pattern("\\s+de\\s+");
     private static final Pattern WHITESPACE = pattern("\\s*");
     private static final Map<String, Pattern> ACTIVITIES = Map.of(
@@ -64,6 +67,7 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
         }
     }
 
+    private record WrittenNumber(String number, int start, int end, Unit unit, String label) {}
     record Measure(String field, BigDecimal value, String unit, int start, int end) {}
 
     static final class InvalidDeclaration extends IllegalArgumentException {
@@ -82,7 +86,37 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
         if (activities.size() > 1) throw new InvalidDeclaration("ambiguous_activity");
         var activity = activities.isEmpty() ? null : activities.get(0);
 
+        var numbers = writtenNumbers(text);
+        var sharedDuration = sharedDurationParts(text, numbers);
         List<Measure> measures = new ArrayList<>();
+        for (int i = 0; i < numbers.size(); i++) {
+            var number = numbers.get(i);
+            Unit unit = number.unit;
+            String field = number.label;
+            if (unit != null) {
+                if (field != null && !field.equals(unit.field)) throw new InvalidDeclaration("invalid_measure_unit");
+                field = unit.field;
+            } else if (field == null) {
+                field = sharedDuration[i] ? DURATION : unresolvedField(text.substring(0, number.start));
+            }
+            if (field == null) continue;
+            String written = number.number;
+            if (!NUMBER_FORMAT.matcher(written).matches()) throw new InvalidDeclaration("invalid_measure_number");
+            String normalized = GROUP_SEPARATOR.matcher(written).replaceAll("").replace(',', '.').replace('−', '-');
+            BigDecimal value = new BigDecimal(normalized);
+            if (value.signum() < 0) {
+                throw new InvalidDeclaration(DURATION.equals(field) ? "negative_duration" : "negative_measure");
+            }
+            if (unit != null && "count".equals(unit.code) && value.stripTrailingZeros().scale() > 0) {
+                throw new InvalidDeclaration("invalid_count");
+            }
+            measures.add(new Measure(field, value, unit == null ? null : unit.code, number.start, number.end));
+        }
+        return new WorkoutCalculator(text, activity, List.copyOf(measures));
+    }
+
+    private static List<WrittenNumber> writtenNumbers(String text) {
+        List<WrittenNumber> numbers = new ArrayList<>();
         var number = NUMBER.matcher(text);
         while (number.find()) {
             String prefix = text.substring(0, number.start());
@@ -97,28 +131,23 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
                     break;
                 }
             }
-            String field = labelledField(prefix);
-            if (unit != null) {
-                if (COMPOUND_UNIT_TAIL.matcher(text).region(end, text.length()).lookingAt()) continue;
-                if (field != null && !field.equals(unit.field)) throw new InvalidDeclaration("invalid_measure_unit");
-                field = unit.field;
-            } else if (field == null) {
-                field = unresolvedField(prefix);
-            }
-            if (field == null) continue;
-            String written = number.group(1);
-            if (!NUMBER_FORMAT.matcher(written).matches()) throw new InvalidDeclaration("invalid_measure_number");
-            String normalized = GROUP_SEPARATOR.matcher(written).replaceAll("").replace(',', '.').replace('−', '-');
-            BigDecimal value = new BigDecimal(normalized);
-            if (value.signum() < 0) {
-                throw new InvalidDeclaration(DURATION.equals(field) ? "negative_duration" : "negative_measure");
-            }
-            if (unit != null && "count".equals(unit.code) && value.stripTrailingZeros().scale() > 0) {
-                throw new InvalidDeclaration("invalid_count");
-            }
-            measures.add(new Measure(field, value, unit == null ? null : unit.code, number.start(), end));
+            if (unit != null && COMPOUND_UNIT_TAIL.matcher(text).region(end, text.length()).lookingAt()) continue;
+            numbers.add(new WrittenNumber(number.group(1), number.start(), end, unit, labelledField(prefix)));
         }
-        return new WorkoutCalculator(text, activity, List.copyOf(measures));
+        return numbers;
+    }
+
+    private static boolean[] sharedDurationParts(String text, List<WrittenNumber> numbers) {
+        boolean[] shared = new boolean[numbers.size()];
+        // A written duration can classify the bare choices immediately to its left.
+        for (int i = numbers.size() - 2; i >= 0; i--) {
+            var current = numbers.get(i);
+            var next = numbers.get(i + 1);
+            boolean nextIsDuration = shared[i + 1] || next.unit != null && DURATION.equals(next.unit.field);
+            shared[i] = nextIsDuration && current.unit == null && (current.label == null || DURATION.equals(current.label))
+                    && ALTERNATIVE.matcher(text).region(current.end, next.start).matches();
+        }
+        return shared;
     }
 
     private static String labelledField(String prefix) {
@@ -178,7 +207,12 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
                 continue;
             }
             var unresolved = parts.stream().filter(part -> part.unit == null).findFirst();
-            if (unresolved.isPresent()) {
+            if (DURATION.equals(field) && hasAlternative(parts)) {
+                unknown(row, "unresolved");
+                if (clarifications.isEmpty()) {
+                    clarify(clarifications.addObject(), field, "other", "Quelle durée faut-il retenir pour la séance ?");
+                }
+            } else if (unresolved.isPresent()) {
                 unknown(row, "unresolved");
                 if (clarifications.isEmpty()) {
                     String number = fragment(unresolved.get());
@@ -233,6 +267,13 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
                     && TIME_IN_SECONDS.get(previous.unit) > TIME_IN_SECONDS.get(current.unit))) return false;
         }
         return true;
+    }
+
+    private boolean hasAlternative(List<Measure> parts) {
+        for (int i = 1; i < parts.size(); i++) {
+            if (ALTERNATIVE.matcher(text).region(parts.get(i - 1).end, parts.get(i).start).matches()) return true;
+        }
+        return false;
     }
 
     private static String summaryUnit(String field, List<Measure> parts) {
