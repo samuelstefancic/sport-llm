@@ -47,7 +47,7 @@ Java garde contrôle transactionnel des corrections, révisions et idempotence. 
 
 ## État et effort
 
-**P0 clôturé. P1 en cours, T04 terminé en local. T05 en attente de décision.** T01 a établi le raisonnement sur les protéines complètes, l’énergie partielle, le sel partiel avec un zéro connu et la comparaison atomique de révision. T02/T03 et leurs contrôles locaux ont été réalisés en P0. Une demande neutre isolée a conduit à la lecture de sn-plan-contracts. [Bilan et preuves de clôture P0](documentation/p0-verification/rapport.md).
+**P0 clôturé. P1 en cours, T04 et T05 vérifiés en local. T06 en attente de décision.** T01 a établi le raisonnement sur les protéines complètes, l’énergie partielle, le sel partiel avec un zéro connu et la comparaison atomique de révision. T02/T03 et leurs contrôles locaux ont été réalisés en P0. Une demande neutre isolée a conduit à la lecture de sn-plan-contracts. [Bilan et preuves de clôture P0](documentation/p0-verification/rapport.md).
 
 P0 : référence historique 8–12 h ; ébauche 4–8 h, estimation distincte non substituée. Le cadrage précédent proposait +1–2 h (9–14 h) sans création/vérification des sept skills. L'option C ajoute maintenant ce lot ; son temps observé et son impact sont consignés dans le rapport de vérification du lot, sans compter deux fois le cadrage. Il ne représente pas le temps d'apprentissage humain.
 
@@ -107,4 +107,32 @@ La [configuration Compose](compose.yaml) et le [Dockerfile Python](python/Docker
 
 **Effort et apprentissage.** Environ 10 min écoulées pour le lot assisté, de 20 h 42 à 20 h 52, heure de Paris, dont environ 8 min jusqu’au dernier contrôle HTTP. Travail en parallèle, 0 € de dépense externe. L’estimation pédagogique initiale de 6–9 h inclut la pratique autonome, dont la durée reste à mesurer. L’utilisateur a expliqué correctement pourquoi Java doit comparer le couple `(entry_id, entry_revision)` et rejeter `MEAL-002` reçu pour `MEAL-001` sans écrire dans le journal. Le code a été réalisé avec assistance.
 
-**Prochaine action, après GO T05** — charger le [catalogue fictif versionné](data/dev/catalog.json) en zone de préparation. T05 n’a pas démarré.
+## T05 — import du catalogue
+
+Le socle P0/T04 a été publié dans la [PR #1](https://github.com/samuelstefancic/sport-llm/pull/1), fusionnée au commit `7664a77` après rejeu local et revue Codex du commit `320ec94`.
+
+**Vérifié le 18 novembre 2026 dans PostgreSQL 17.12.** L’exercice a établi que 0 g/100 g est une valeur connue, avec son unité, sa base et sa provenance. Si l’autre contribution est inconnue, le bilan attendu est « 0 g de sel — sous-total partiel ». Le calcul du bilan appartient à T06.
+
+L’[importeur de catalogue](catalog/import_catalog.py) est un outil local distinct de FastAPI. Il reçoit les octets du [catalogue fictif](data/dev/catalog.json) dans une table temporaire, vérifie la source, la version, les identifiants, les états, les unités et les valeurs, puis publie les lignes et bascule le pointeur actif dans la même transaction. Un verrou par catalogue sérialise la publication. Le document source est conservé en JSONB et son empreinte porte sur les octets originaux. Le journal des repas reste du ressort de Java. [Schéma PostgreSQL](catalog/schema.sql)
+
+| Contrôle en base | Observation |
+|---|---|
+| Activation et provenance | `DEMO-FOOD 0.2.0` relu comme actif dans la base locale. 6 aliments, 60 couples aliment/apport, 42 valeurs connues et 18 absentes. SHA-256 source `2ec60064489c0a4ecc4e7fc1865ddb1652c8af73fbc4dc11dfbcb3e793073ef4`. |
+| Zéro et absence | Pour une base de 100 g cuits, le riz D01 conserve un sel numérique égal à 0 avec l’état `known`. Le poulet D02 et les courgettes D03 portent SQL `NULL` et `absent`. L’unité reste le gramme dans les trois cas. Une clé omise dans une variante fictive est également restée inconnue. |
+| Rejeu et conflit | Même fichier rejoué, toujours 1 version, 6 aliments, 60 apports, 1 pointeur. Une version déjà utilisée avec d’autres octets est refusée. Le rejeu d’une version historique après activation de la suivante conserve la nouvelle version active. |
+| Validation | Une cellule étiquetée absente avec une valeur numérique égale à zéro est refusée. L’état publié reste intact. |
+| Interruption et reprise | Dans un schéma jetable, une seconde connexion a observé l’import de B bloqué juste avant la bascule, tandis que A restait lisible. Le test a interrompu la session PostgreSQL de l’import. A est restée active, aucune ligne de B n’a été publiée. Une nouvelle tentative a activé B. |
+
+**Reproduction.** Depuis la racine du dépôt avec PostgreSQL démarré en local et un interpréteur équipé de [Psycopg 3.2.13](catalog/requirements.txt), définir `PGHOST` (socket privé ou hôte local), `PGDATABASE` et `PGUSER` pour une base de développement dédiée. Le rôle de test doit pouvoir créer ses schémas et interrompre sa propre session. L’import accepte aussi `DATABASE_URL`. Sur une base nouvellement créée :
+
+```sh
+python -B catalog/import_catalog.py --init-schema data/dev/catalog.json
+python -B catalog/import_catalog.py data/dev/catalog.json
+python -B scripts/verify_t05.py
+```
+
+Le premier appel renvoie `activated`, le deuxième `already_imported` avec la même empreinte. Le [contrôle d’intégration](scripts/verify_t05.py) utilise un schéma neuf sur cette même instance et le supprime à la fin. Les variantes fictives de test restent isolées du catalogue actif.
+
+**Ciqual, métadonnées consultées le 18 novembre 2026.** L’Anses publie la *Table de composition nutritionnelle des aliments Ciqual 2025*. Le dépôt Recherche Data Gouv porte la version 1.0 du 19 novembre 2025 et le DOI `10.57745/RDMHWY`. La **Licence Ouverte Etalab 2.0** autorise l’extraction, l’adaptation, la redistribution et l’exploitation commerciale avec mention du producteur et de la date de mise à jour. L’Anses demande d’indiquer la source et la version et de préserver le sens des données. Une future acquisition devra garder les valeurs originales, tracer les transformations et distinguer valeur manquante, trace, borne et zéro. Attribution prévue : Anses, 2025, *Table de composition nutritionnelle des aliments Ciqual*, version 1.0 du 19 novembre 2025. Acquisition et import des données réelles attendent une décision distincte. [Notice officielle](https://doi.org/10.57745/RDMHWY) · [Documentation Anses, §1 et §3.2](https://ciqual.anses.fr/cms/sites/default/files/inline-files/Table%20Ciqual%202025%20doc%20FR_2025_11_19.pdf) · [Licence Ouverte 2.0](https://www.data.gouv.fr/pages/legal/licences/etalab-2-0)
+
+**Après GO T06**, faire lire à Java les références du catalogue actif et calculer le cas fictif F02 en décimal, puis comparer le résultat à l’oracle P0. RAG-01 reste prévu en fin de P2.
