@@ -3,19 +3,22 @@
 from decimal import Decimal
 import logging
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import FastAPI, Header, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from workout import workout_mention
 
-class MealInput(BaseModel):
+
+class ProposalInput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     entry_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$")
     entry_revision: int = Field(ge=1)
     text: str = Field(min_length=1, max_length=4000, pattern=r"\S")
+    entry_kind: Literal["meal", "workout"] = "meal"
 
 
 app = FastAPI()
@@ -77,18 +80,22 @@ def meal_proposal(meal):
 
 
 @app.post("/internal/proposals")
-def propose(meal: MealInput, response: Response, x_correlation_id: Annotated[UUID, Header()]):
+def propose(entry: ProposalInput, response: Response, x_correlation_id: Annotated[UUID, Header()]):
     response.headers["X-Correlation-ID"] = str(x_correlation_id)
     logger.info("proposal correlation=%s", x_correlation_id)
-    mentions, clarifications = meal_proposal(meal)
+    food_mentions, sport_mentions, clarifications = [], [], []
+    if entry.entry_kind == "workout":
+        sport_mentions.append(workout_mention(entry.entry_id, entry.entry_revision, entry.text))
+    else:
+        food_mentions, clarifications = meal_proposal(entry)
     return {
         "schema_version": "0.1.0",
         "kind": "python_proposal",
-        "proposal_id": str(uuid5(NAMESPACE_URL, f"urn:llmsport:meal:{meal.entry_id}:{meal.entry_revision}")),
-        "entry_id": meal.entry_id,
-        "entry_revision": meal.entry_revision,
-        "entry_kind": "meal",
-        "food_mentions": mentions,
-        "sport_mentions": [],
+        "proposal_id": str(uuid5(NAMESPACE_URL, f"urn:llmsport:{entry.entry_kind}:{entry.entry_id}:{entry.entry_revision}")),
+        "entry_id": entry.entry_id,
+        "entry_revision": entry.entry_revision,
+        "entry_kind": entry.entry_kind,
+        "food_mentions": food_mentions,
+        "sport_mentions": sport_mentions,
         "clarifications": clarifications,
     }
