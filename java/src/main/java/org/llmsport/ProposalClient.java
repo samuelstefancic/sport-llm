@@ -3,6 +3,7 @@ package org.llmsport;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.networknt.schema.JsonNodePath;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
@@ -58,17 +59,30 @@ public class ProposalClient {
 
     public ResponseEntity<?> analyze(JsonNode input, UUID correlation)
             throws JsonProcessingException {
+        return analyze(input, correlation, "meal");
+    }
+
+    ResponseEntity<?> analyzeWorkout(JsonNode input, UUID correlation) throws JsonProcessingException {
+        return analyze(input, correlation, "workout");
+    }
+
+    private ResponseEntity<?> analyze(JsonNode input, UUID correlation, String entryKind)
+            throws JsonProcessingException {
         String id = (correlation == null ? UUID.randomUUID() : correlation).toString();
         if (!validInput(input)) {
             return error(400, id, "invalid_request");
         }
 
+        JsonNode envelope = input;
+        if ("workout".equals(entryKind)) {
+            envelope = ((ObjectNode) input).deepCopy().put("entry_kind", entryKind);
+        }
         HttpRequest request = HttpRequest.newBuilder(proposalsUri)
                 .timeout(TIMEOUT)
                 .header(CORRELATION, id)
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofByteArray(mapper.writeValueAsBytes(input)))
+                .POST(HttpRequest.BodyPublishers.ofByteArray(mapper.writeValueAsBytes(envelope)))
                 .build();
         var exchange = http.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray());
         HttpResponse<byte[]> response;
@@ -107,7 +121,7 @@ public class ProposalClient {
         if (!proposalSchema.validate(proposal).isEmpty()
                 || !input.get("entry_id").equals(proposal.get("entry_id"))
                 || input.get("entry_revision").decimalValue().compareTo(proposal.get("entry_revision").decimalValue()) != 0
-                || !"meal".equals(proposal.path("entry_kind").textValue())) {
+                || !entryKind.equals(proposal.path("entry_kind").textValue())) {
             return error(502, id, "invalid_proposal");
         }
         LOG.info("correlation={} outcome=proposal_accepted", id);

@@ -64,9 +64,42 @@ class JournalController {
     @GetMapping("/meals/{entry}/revisions/{revision}")
     ResponseEntity<?> mealRevision(@PathVariable String entry, @PathVariable long revision,
             @RequestHeader(value = CORRELATION, required = false) UUID supplied) throws IOException {
+        return revision(entry, revision, "meal", supplied);
+    }
+
+    @PostMapping(path = "/workouts", consumes = "application/json", produces = "application/json")
+    ResponseEntity<?> workout(@RequestBody JsonNode input,
+            @RequestHeader(value = CORRELATION, required = false) UUID supplied) throws IOException {
+        UUID id = supplied == null ? UUID.randomUUID() : supplied;
+        if (!ProposalClient.validInput(input)) return error(400, id, "invalid_request");
+        try {
+            var declaration = WorkoutCalculator.parse(input.get("text").textValue());
+            var received = python.analyzeWorkout(input, id);
+            if (!received.getStatusCode().is2xxSuccessful()) return received;
+            JsonNode payload = declaration.calculate(mapper, input, (JsonNode) received.getBody());
+            try (var db = store.open()) {
+                if (!store.save(db, input, "workout", payload)) return error(409, id, "revision_conflict");
+            }
+            return ResponseEntity.ok().header(CORRELATION, id.toString()).body(payload);
+        } catch (WorkoutCalculator.InvalidDeclaration e) {
+            return error(400, id, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            return error(502, id, "invalid_proposal");
+        } catch (SQLException e) {
+            return error(503, id, "journal_unavailable");
+        }
+    }
+
+    @GetMapping("/workouts/{entry}/revisions/{revision}")
+    ResponseEntity<?> workoutRevision(@PathVariable String entry, @PathVariable long revision,
+            @RequestHeader(value = CORRELATION, required = false) UUID supplied) throws IOException {
+        return revision(entry, revision, "workout", supplied);
+    }
+
+    private ResponseEntity<?> revision(String entry, long revision, String kind, UUID supplied) throws IOException {
         UUID id = supplied == null ? UUID.randomUUID() : supplied;
         try {
-            JsonNode payload = store.read(entry, revision, "meal");
+            JsonNode payload = store.read(entry, revision, kind);
             return payload == null ? error(404, id, "not_found")
                     : ResponseEntity.ok().header(CORRELATION, id.toString()).body(payload);
         } catch (SQLException e) {
