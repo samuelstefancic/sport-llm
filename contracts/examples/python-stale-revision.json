@@ -1,0 +1,40 @@
+{
+  "schema_version": "0.1.0",
+  "kind": "python_proposal",
+  "proposal_id": "PROP-OLD",
+  "entry_id": "MEAL-001",
+  "entry_revision": 1,
+  "entry_kind": "meal",
+  "food_mentions": [
+    {
+      "mention_id": "D01",
+      "text": "150 g de riz cuit",
+      "source": {
+        "kind": "user_declaration",
+        "input_id": "INPUT-001",
+        "input_revision": 1,
+        "text": "150 g de riz cuit"
+      },
+      "quantity": {
+        "value": 150,
+        "unit": "g",
+        "source": {
+          "kind": "user_declaration",
+          "input_id": "INPUT-001",
+          "input_revision": 1,
+          "text": "150 g de riz cuit"
+        }
+      },
+      "food_state": "cooked",
+      "catalog_candidates": [
+        {
+          "catalog_id": "DEMO-FOOD",
+          "catalog_version": "0.1-salt-variant",
+          "record_id": "D01"
+        }
+      ]
+    }
+  ],
+  "sport_mentions": [],
+  "clarifications": []
+}

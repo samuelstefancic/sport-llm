@@ -1,0 +1,362 @@
+{
+  "schema_version": "0.1.0",
+  "kind": "java_nutrition_report",
+  "meal_id": "MEAL-001",
+  "selected_nutrients": [
+    "energy",
+    "protein",
+    "carbohydrate",
+    "fat"
+  ],
+  "nutrients": [
+    {
+      "id": "energy",
+      "unit": "kcal",
+      "value": 415,
+      "status": "complet",
+      "provenance": [
+        {
+          "item_id": "D01",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_correction",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D01"
+            }
+          },
+          "reference": {
+            "value": 130,
+            "unit": "kcal",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D01",
+              "field": "nutrients.energy"
+            }
+          },
+          "value": 130.0
+        },
+        {
+          "item_id": "D02",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D02"
+            }
+          },
+          "reference": {
+            "value": 165,
+            "unit": "kcal",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D02",
+              "field": "nutrients.energy"
+            }
+          },
+          "value": 165.0
+        },
+        {
+          "item_id": "D04",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D04"
+            }
+          },
+          "reference": {
+            "value": 120,
+            "unit": "kcal",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D04",
+              "field": "nutrients.energy"
+            }
+          },
+          "value": 120.0
+        }
+      ],
+      "missing": []
+    },
+    {
+      "id": "protein",
+      "unit": "g",
+      "value": 42.5,
+      "status": "complet",
+      "provenance": [
+        {
+          "item_id": "D01",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_correction",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D01"
+            }
+          },
+          "reference": {
+            "value": 2.5,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D01",
+              "field": "nutrients.protein"
+            }
+          },
+          "value": 2.5
+        },
+        {
+          "item_id": "D02",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D02"
+            }
+          },
+          "reference": {
+            "value": 31,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D02",
+              "field": "nutrients.protein"
+            }
+          },
+          "value": 31.0
+        },
+        {
+          "item_id": "D04",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D04"
+            }
+          },
+          "reference": {
+            "value": 9,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D04",
+              "field": "nutrients.protein"
+            }
+          },
+          "value": 9.0
+        }
+      ],
+      "missing": []
+    },
+    {
+      "id": "carbohydrate",
+      "unit": "g",
+      "value": 46,
+      "status": "complet",
+      "provenance": [
+        {
+          "item_id": "D01",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_correction",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D01"
+            }
+          },
+          "reference": {
+            "value": 28,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D01",
+              "field": "nutrients.carbohydrate"
+            }
+          },
+          "value": 28.0
+        },
+        {
+          "item_id": "D02",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D02"
+            }
+          },
+          "reference": {
+            "value": 0,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D02",
+              "field": "nutrients.carbohydrate"
+            }
+          },
+          "value": 0.0
+        },
+        {
+          "item_id": "D04",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D04"
+            }
+          },
+          "reference": {
+            "value": 18,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D04",
+              "field": "nutrients.carbohydrate"
+            }
+          },
+          "value": 18.0
+        }
+      ],
+      "missing": []
+    },
+    {
+      "id": "fat",
+      "unit": "g",
+      "value": 4.3,
+      "status": "complet",
+      "provenance": [
+        {
+          "item_id": "D01",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_correction",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D01"
+            }
+          },
+          "reference": {
+            "value": 0.3,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D01",
+              "field": "nutrients.fat"
+            }
+          },
+          "value": 0.3
+        },
+        {
+          "item_id": "D02",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D02"
+            }
+          },
+          "reference": {
+            "value": 3.6,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D02",
+              "field": "nutrients.fat"
+            }
+          },
+          "value": 3.6
+        },
+        {
+          "item_id": "D04",
+          "quantity": {
+            "value": 100,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-001",
+              "input_revision": 2,
+              "text": "100 g de D04"
+            }
+          },
+          "reference": {
+            "value": 0.4,
+            "unit": "g",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D04",
+              "field": "nutrients.fat"
+            }
+          },
+          "value": 0.4
+        }
+      ],
+      "missing": []
+    }
+  ],
+  "calculation": "sum_known_contributions_v1"
+}

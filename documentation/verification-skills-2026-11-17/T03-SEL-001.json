@@ -1,0 +1,325 @@
+{
+  "case_id": "T03-SEL-001",
+  "kind": "fictitious_contract_example_not_json_schema",
+  "catalog": {
+    "id": "DEMO-FOOD",
+    "version": "0.1-salt-variant",
+    "base_version": "0.1",
+    "note": "Variante explicitement fictive ajoutant le sel ; ne modifie pas silencieusement le catalogue original.",
+    "basis": {
+      "value": 100,
+      "unit": "g"
+    },
+    "items": [
+      {
+        "id": "D01",
+        "name": "riz",
+        "state": "cooked",
+        "nutrients": {
+          "energy": {
+            "value": 130,
+            "unit": "kcal"
+          },
+          "protein": {
+            "value": 2.5,
+            "unit": "g"
+          },
+          "carbohydrate": {
+            "value": null,
+            "unit": "g"
+          },
+          "fat": {
+            "value": null,
+            "unit": "g"
+          },
+          "salt": {
+            "value": 0,
+            "unit": "g"
+          }
+        }
+      },
+      {
+        "id": "D02",
+        "name": "poulet",
+        "state": "cooked",
+        "nutrients": {
+          "energy": {
+            "value": 165,
+            "unit": "kcal"
+          },
+          "protein": {
+            "value": 31,
+            "unit": "g"
+          },
+          "carbohydrate": {
+            "value": null,
+            "unit": "g"
+          },
+          "fat": {
+            "value": null,
+            "unit": "g"
+          },
+          "salt": {
+            "value": null,
+            "unit": "g"
+          }
+        }
+      },
+      {
+        "id": "D03",
+        "name": "courgettes",
+        "state": "cooked",
+        "nutrients": {
+          "energy": {
+            "value": null,
+            "unit": "kcal"
+          },
+          "protein": {
+            "value": 1,
+            "unit": "g"
+          },
+          "carbohydrate": {
+            "value": null,
+            "unit": "g"
+          },
+          "fat": {
+            "value": null,
+            "unit": "g"
+          },
+          "salt": {
+            "value": null,
+            "unit": "g"
+          }
+        }
+      }
+    ]
+  },
+  "meal": {
+    "id": "DEMO-MEAL-001",
+    "revision": 2,
+    "items": [
+      {
+        "food_id": "D01",
+        "quantity": {
+          "value": 100,
+          "unit": "g"
+        },
+        "source": {
+          "kind": "user_exercise",
+          "reference": "variant_100g_each"
+        }
+      },
+      {
+        "food_id": "D02",
+        "quantity": {
+          "value": 100,
+          "unit": "g"
+        },
+        "source": {
+          "kind": "user_exercise",
+          "reference": "variant_100g_each"
+        }
+      },
+      {
+        "food_id": "D03",
+        "quantity": {
+          "value": 100,
+          "unit": "g"
+        },
+        "source": {
+          "kind": "user_exercise",
+          "reference": "variant_100g_each"
+        }
+      }
+    ],
+    "corrections": [
+      {
+        "food_id": "D01",
+        "field": "quantity",
+        "before": 150,
+        "after": 100,
+        "unit": "g",
+        "source": "user_correction"
+      }
+    ]
+  },
+  "selected_nutrients": [
+    "energy",
+    "protein",
+    "carbohydrate",
+    "fat",
+    "salt"
+  ],
+  "default_nutrients": [
+    "energy",
+    "protein",
+    "carbohydrate",
+    "fat"
+  ],
+  "expected_report": {
+    "meal_id": "DEMO-MEAL-001",
+    "meal_revision": 2,
+    "nutrients": [
+      {
+        "id": "energy",
+        "value": 295,
+        "unit": "kcal",
+        "status": "partiel",
+        "provenance": [
+          {
+            "food_id": "D01",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "field": "energy",
+            "quantity_source": "user_exercise"
+          },
+          {
+            "food_id": "D02",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "field": "energy",
+            "quantity_source": "user_exercise"
+          }
+        ],
+        "missing": [
+          {
+            "food_id": "D03",
+            "field": "energy",
+            "reason": "catalog_value_absent",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant"
+          }
+        ]
+      },
+      {
+        "id": "protein",
+        "value": 34.5,
+        "unit": "g",
+        "status": "complet",
+        "provenance": [
+          {
+            "food_id": "D01",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "field": "protein",
+            "quantity_source": "user_exercise"
+          },
+          {
+            "food_id": "D02",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "field": "protein",
+            "quantity_source": "user_exercise"
+          },
+          {
+            "food_id": "D03",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "field": "protein",
+            "quantity_source": "user_exercise"
+          }
+        ],
+        "missing": []
+      },
+      {
+        "id": "carbohydrate",
+        "value": null,
+        "unit": "g",
+        "status": "indéterminé",
+        "provenance": [],
+        "missing": [
+          {
+            "food_id": "D01",
+            "field": "carbohydrate",
+            "reason": "catalog_value_absent",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant"
+          },
+          {
+            "food_id": "D02",
+            "field": "carbohydrate",
+            "reason": "catalog_value_absent",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant"
+          },
+          {
+            "food_id": "D03",
+            "field": "carbohydrate",
+            "reason": "catalog_value_absent",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant"
+          }
+        ]
+      },
+      {
+        "id": "fat",
+        "value": null,
+        "unit": "g",
+        "status": "indéterminé",
+        "provenance": [],
+        "missing": [
+          {
+            "food_id": "D01",
+            "field": "fat",
+            "reason": "catalog_value_absent",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant"
+          },
+          {
+            "food_id": "D02",
+            "field": "fat",
+            "reason": "catalog_value_absent",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant"
+          },
+          {
+            "food_id": "D03",
+            "field": "fat",
+            "reason": "catalog_value_absent",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant"
+          }
+        ]
+      },
+      {
+        "id": "salt",
+        "value": 0,
+        "unit": "g",
+        "status": "partiel",
+        "provenance": [
+          {
+            "food_id": "D01",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant",
+            "field": "salt",
+            "quantity_source": "user_exercise"
+          }
+        ],
+        "missing": [
+          {
+            "food_id": "D02",
+            "field": "salt",
+            "reason": "catalog_value_absent",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant"
+          },
+          {
+            "food_id": "D03",
+            "field": "salt",
+            "reason": "catalog_value_absent",
+            "catalog_id": "DEMO-FOOD",
+            "catalog_version": "0.1-salt-variant"
+          }
+        ]
+      }
+    ]
+  },
+  "oracle_provenance": {
+    "kind": "manual_reasoning_in_chat",
+    "salt": "User answered 0 g partial; two catalog values absent",
+    "protein_energy": "User answered 34.5 g complete and 295 kcal partial",
+    "carbohydrate_fat": "No catalog contribution supplied; null and indeterminate",
+    "independent_test_set": false,
+    "java_executed": false
+  }
+}

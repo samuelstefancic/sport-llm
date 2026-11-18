@@ -1,0 +1,450 @@
+{
+  "catalog_id": "DEMO-FOOD",
+  "version": "0.2.0",
+  "fictitious": true,
+  "purpose": "development_only",
+  "created_on": "2026-11-17",
+  "provenance": {
+    "kind": "project_authored_fiction",
+    "source": "User-approved llmSport P0 fixtures",
+    "not_real_food_reference": true,
+    "usage": "Internal development and teaching fixtures authorized; no external dataset imported"
+  },
+  "lineage": {
+    "base_catalog": "DEMO-FOOD 0.1",
+    "salt_variant": "DEMO-FOOD 0.1-salt-variant",
+    "preserved_values": "D01 energy130/protein2.5/salt0; D02 energy165/protein31/salt unknown; D03 energy unknown/protein1/salt unknown",
+    "changes": "Version 0.2.0 explicitly adds fictional carbohydrate/fat and optional nutrient values, and D04-D06; it does not rewrite the historical fixtures."
+  },
+  "missing_policy": "null means absent. Zero means explicitly known zero. Unlisted nutrients are normalized to null below. No trace values supplied in this version.",
+  "nutrient_definitions": [
+    {
+      "id": "energy",
+      "label": "Énergie",
+      "unit": "kcal",
+      "default": true
+    },
+    {
+      "id": "protein",
+      "label": "Protéines",
+      "unit": "g",
+      "default": true
+    },
+    {
+      "id": "carbohydrate",
+      "label": "Glucides",
+      "unit": "g",
+      "default": true
+    },
+    {
+      "id": "fat",
+      "label": "Lipides",
+      "unit": "g",
+      "default": true
+    },
+    {
+      "id": "fiber",
+      "label": "Fibres",
+      "unit": "g",
+      "default": false
+    },
+    {
+      "id": "sugars",
+      "label": "Sucres",
+      "unit": "g",
+      "default": false
+    },
+    {
+      "id": "salt",
+      "label": "Sel",
+      "unit": "g",
+      "default": false
+    },
+    {
+      "id": "vitamin_c",
+      "label": "Vitamine C",
+      "unit": "mg",
+      "default": false
+    },
+    {
+      "id": "vitamin_b9",
+      "label": "Vitamine B9",
+      "unit": "ug",
+      "default": false
+    },
+    {
+      "id": "mineral_calcium",
+      "label": "Calcium",
+      "unit": "mg",
+      "default": false
+    }
+  ],
+  "items": [
+    {
+      "food_id": "D01",
+      "label": "riz",
+      "state": "cooked",
+      "basis": {
+        "value": 100,
+        "unit": "g"
+      },
+      "nutrients": {
+        "energy": {
+          "value": 130,
+          "unit": "kcal",
+          "availability": "known"
+        },
+        "protein": {
+          "value": 2.5,
+          "unit": "g",
+          "availability": "known"
+        },
+        "carbohydrate": {
+          "value": 28,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fat": {
+          "value": 0.3,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fiber": {
+          "value": 0.4,
+          "unit": "g",
+          "availability": "known"
+        },
+        "sugars": {
+          "value": 0.1,
+          "unit": "g",
+          "availability": "known"
+        },
+        "salt": {
+          "value": 0,
+          "unit": "g",
+          "availability": "known"
+        },
+        "vitamin_c": {
+          "value": null,
+          "unit": "mg",
+          "availability": "absent"
+        },
+        "vitamin_b9": {
+          "value": null,
+          "unit": "ug",
+          "availability": "absent"
+        },
+        "mineral_calcium": {
+          "value": null,
+          "unit": "mg",
+          "availability": "absent"
+        }
+      }
+    },
+    {
+      "food_id": "D02",
+      "label": "poulet",
+      "state": "cooked",
+      "basis": {
+        "value": 100,
+        "unit": "g"
+      },
+      "nutrients": {
+        "energy": {
+          "value": 165,
+          "unit": "kcal",
+          "availability": "known"
+        },
+        "protein": {
+          "value": 31,
+          "unit": "g",
+          "availability": "known"
+        },
+        "carbohydrate": {
+          "value": 0,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fat": {
+          "value": 3.6,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fiber": {
+          "value": 0,
+          "unit": "g",
+          "availability": "known"
+        },
+        "sugars": {
+          "value": 0,
+          "unit": "g",
+          "availability": "known"
+        },
+        "salt": {
+          "value": null,
+          "unit": "g",
+          "availability": "absent"
+        },
+        "vitamin_c": {
+          "value": null,
+          "unit": "mg",
+          "availability": "absent"
+        },
+        "vitamin_b9": {
+          "value": null,
+          "unit": "ug",
+          "availability": "absent"
+        },
+        "mineral_calcium": {
+          "value": null,
+          "unit": "mg",
+          "availability": "absent"
+        }
+      }
+    },
+    {
+      "food_id": "D03",
+      "label": "courgettes",
+      "state": "cooked",
+      "basis": {
+        "value": 100,
+        "unit": "g"
+      },
+      "nutrients": {
+        "energy": {
+          "value": null,
+          "unit": "kcal",
+          "availability": "absent"
+        },
+        "protein": {
+          "value": 1,
+          "unit": "g",
+          "availability": "known"
+        },
+        "carbohydrate": {
+          "value": 2,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fat": {
+          "value": 0.2,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fiber": {
+          "value": 1,
+          "unit": "g",
+          "availability": "known"
+        },
+        "sugars": {
+          "value": 1,
+          "unit": "g",
+          "availability": "known"
+        },
+        "salt": {
+          "value": null,
+          "unit": "g",
+          "availability": "absent"
+        },
+        "vitamin_c": {
+          "value": null,
+          "unit": "mg",
+          "availability": "absent"
+        },
+        "vitamin_b9": {
+          "value": null,
+          "unit": "ug",
+          "availability": "absent"
+        },
+        "mineral_calcium": {
+          "value": null,
+          "unit": "mg",
+          "availability": "absent"
+        }
+      }
+    },
+    {
+      "food_id": "D04",
+      "label": "lentilles",
+      "state": "cooked",
+      "basis": {
+        "value": 100,
+        "unit": "g"
+      },
+      "nutrients": {
+        "energy": {
+          "value": 120,
+          "unit": "kcal",
+          "availability": "known"
+        },
+        "protein": {
+          "value": 9,
+          "unit": "g",
+          "availability": "known"
+        },
+        "carbohydrate": {
+          "value": 18,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fat": {
+          "value": 0.4,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fiber": {
+          "value": 8,
+          "unit": "g",
+          "availability": "known"
+        },
+        "sugars": {
+          "value": 1,
+          "unit": "g",
+          "availability": "known"
+        },
+        "salt": {
+          "value": 0.02,
+          "unit": "g",
+          "availability": "known"
+        },
+        "vitamin_c": {
+          "value": 4,
+          "unit": "mg",
+          "availability": "known"
+        },
+        "vitamin_b9": {
+          "value": 30,
+          "unit": "ug",
+          "availability": "known"
+        },
+        "mineral_calcium": {
+          "value": 20,
+          "unit": "mg",
+          "availability": "known"
+        }
+      }
+    },
+    {
+      "food_id": "D05",
+      "label": "riz",
+      "state": "raw",
+      "basis": {
+        "value": 100,
+        "unit": "g"
+      },
+      "nutrients": {
+        "energy": {
+          "value": 350,
+          "unit": "kcal",
+          "availability": "known"
+        },
+        "protein": {
+          "value": 7,
+          "unit": "g",
+          "availability": "known"
+        },
+        "carbohydrate": {
+          "value": 77,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fat": {
+          "value": 1,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fiber": {
+          "value": 1.5,
+          "unit": "g",
+          "availability": "known"
+        },
+        "sugars": {
+          "value": 0.2,
+          "unit": "g",
+          "availability": "known"
+        },
+        "salt": {
+          "value": 0,
+          "unit": "g",
+          "availability": "known"
+        },
+        "vitamin_c": {
+          "value": null,
+          "unit": "mg",
+          "availability": "absent"
+        },
+        "vitamin_b9": {
+          "value": null,
+          "unit": "ug",
+          "availability": "absent"
+        },
+        "mineral_calcium": {
+          "value": null,
+          "unit": "mg",
+          "availability": "absent"
+        }
+      }
+    },
+    {
+      "food_id": "D06",
+      "label": "eau",
+      "state": "not_applicable",
+      "basis": {
+        "value": 100,
+        "unit": "g"
+      },
+      "nutrients": {
+        "energy": {
+          "value": 0,
+          "unit": "kcal",
+          "availability": "known"
+        },
+        "protein": {
+          "value": 0,
+          "unit": "g",
+          "availability": "known"
+        },
+        "carbohydrate": {
+          "value": 0,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fat": {
+          "value": 0,
+          "unit": "g",
+          "availability": "known"
+        },
+        "fiber": {
+          "value": 0,
+          "unit": "g",
+          "availability": "known"
+        },
+        "sugars": {
+          "value": 0,
+          "unit": "g",
+          "availability": "known"
+        },
+        "salt": {
+          "value": 0,
+          "unit": "g",
+          "availability": "known"
+        },
+        "vitamin_c": {
+          "value": null,
+          "unit": "mg",
+          "availability": "absent"
+        },
+        "vitamin_b9": {
+          "value": null,
+          "unit": "ug",
+          "availability": "absent"
+        },
+        "mineral_calcium": {
+          "value": null,
+          "unit": "mg",
+          "availability": "absent"
+        }
+      }
+    }
+  ]
+}

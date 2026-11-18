@@ -1,0 +1,119 @@
+{
+  "schema_version": "0.1.0",
+  "kind": "java_nutrition_report",
+  "meal_id": "MEAL-MICRO",
+  "meal_revision": 2,
+  "selected_nutrients": [
+    "vitamin_c",
+    "vitamin_b9",
+    "mineral_calcium"
+  ],
+  "nutrients": [
+    {
+      "id": "vitamin_c",
+      "unit": "mg",
+      "value": 2.0,
+      "status": "complet",
+      "provenance": [
+        {
+          "item_id": "D04",
+          "quantity": {
+            "value": 50,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-MICRO",
+              "input_revision": 2,
+              "text": "50 g de lentilles cuites"
+            }
+          },
+          "reference": {
+            "value": 4,
+            "unit": "mg",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D04",
+              "field": "nutrients.vitamin_c"
+            }
+          },
+          "value": 2.0
+        }
+      ],
+      "missing": []
+    },
+    {
+      "id": "vitamin_b9",
+      "unit": "ug",
+      "value": 15.0,
+      "status": "complet",
+      "provenance": [
+        {
+          "item_id": "D04",
+          "quantity": {
+            "value": 50,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-MICRO",
+              "input_revision": 2,
+              "text": "50 g de lentilles cuites"
+            }
+          },
+          "reference": {
+            "value": 30,
+            "unit": "ug",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D04",
+              "field": "nutrients.vitamin_b9"
+            }
+          },
+          "value": 15.0
+        }
+      ],
+      "missing": []
+    },
+    {
+      "id": "mineral_calcium",
+      "unit": "mg",
+      "value": 10.0,
+      "status": "complet",
+      "provenance": [
+        {
+          "item_id": "D04",
+          "quantity": {
+            "value": 50,
+            "unit": "g",
+            "source": {
+              "kind": "user_declaration",
+              "input_id": "INPUT-MICRO",
+              "input_revision": 2,
+              "text": "50 g de lentilles cuites"
+            }
+          },
+          "reference": {
+            "value": 20,
+            "unit": "mg",
+            "basis_mass_g": 100,
+            "source": {
+              "kind": "catalog",
+              "catalog_id": "DEMO-FOOD",
+              "catalog_version": "0.2.0",
+              "record_id": "D04",
+              "field": "nutrients.mineral_calcium"
+            }
+          },
+          "value": 10.0
+        }
+      ],
+      "missing": []
+    }
+  ],
+  "calculation": "sum_known_contributions_v1"
+}
