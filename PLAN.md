@@ -4,14 +4,14 @@ Version 1.0 · 17 novembre 2026. Les charges sont des estimations intégrées et
 
 ## Décision et état de départ
 
-**P0 clôturé. P1 a démarré avec le GO local pour T04, désormais terminé.** Les [commandes et résultats T04](PROJECT.md#t04--échange-http-local) servent de point de reprise. T05 attend sa décision de lancement. RAG-01 est prévu en fin de P2.
+**P0 clôturé. T04 et T05 vérifiés en local.** Le [bilan de l’import PostgreSQL](PROJECT.md#t05--import-du-catalogue) sert de point de reprise. T06 attend son GO. RAG-01 est prévu en fin de P2.
 
 | Élément | État vérifié | Preuve ou limite |
 |---|---|---|
 | T01, T02, T03 | P0 clôturé, 3 tickets terminés | Raisonnement sur le repas et les révisions, 30 cas fictifs dont 15 alimentaires, 10 sportifs et 5 mixtes/ambigus. 10 oracles de calcul et 10 d’ambiguïté figurent dans ce jeu de développement. [Bilan P0](documentation/p0-verification/rapport.md) · [Cas](data/dev/cases.json) · [Oracles](data/dev/oracles.md) |
 | Contrat | Version 0.1.0 validée statiquement | 25 exemples exécutés par le vérificateur, dont 14 conformes et 11 rejetés. Les courses en PostgreSQL et la chaîne applicative restent à vérifier en P1. [Schéma](contracts/analysis.schema.json) · [Sémantique](contracts/analysis.md) · [Manifeste](contracts/examples/manifest.json) |
 | Skills | 7 présents, 21 scénarios fictifs évalués et 30 réponses avec rejeux | Le routage implicite a été observé pour `sn-plan-contracts` dans un essai isolé. [Preuves des skills](documentation/verification-skills-2026-11-17/rapport.md) · [Compte rendu du routage](documentation/p0-verification/rapport.md) |
-| Réalisation | 1 jalon sur 8 clôturé, 1/6 ticket P1 exécuté | Échange Spring Boot → FastAPI vérifié sur le Mac. Le catalogue, les calculs, la persistance et le parcours complet relèvent des tickets suivants. |
+| Réalisation | 1 jalon sur 8 clôturé, 2/6 tickets P1 exécutés | Échange Spring Boot → FastAPI vérifié et catalogue fictif activé en PostgreSQL. Le calcul du repas et la persistance du journal restent à réaliser. |
 | RAG-01 | Cadrage prêt, tests préparés | 3 articles, 17 passages, 8 questions de recherche et 11 cas de synthèse. La [fiche RAG-01](documentation/RAG-01.md) porte le registre des passages, les corrigés et le barème. Le lot attend sa décision de lancement en fin de P2. |
 
 ## Produit et responsabilités
@@ -79,7 +79,9 @@ Les fourchettes T01–T03 répartissent les 8–12 h de base à titre indicatif.
 
 ## P2 — première inférence, évaluation et RAG
 
-**Entrée.** P1 démontré. Préserver le trajet métier et ajouter une seule solution d’inférence pour la première comparaison. Relever matériel, RAM, disque, versions, device effectif et accès avant de choisir. Qwen3-4B est un candidat, Qwen3-0.6B une piste plus légère. MLX-LM et Ollama peuvent servir de moteurs ou d’outils pour l’inférence locale. PyTorch reste le parcours d’apprentissage pour l’entraînement.
+**Entrée.** Après démonstration de P1, instrumenter d’abord la baseline déterministe (T10). Avant de développer l’adaptateur de T11, comparer les deux candidats locaux **Qwen3-0.6B** et **Qwen3-4B** avec la baseline, sur les mêmes cas fictifs en français, avec prompt et budget de sortie figés. Les essayer dans un banc local minimal en P2. [Fiche Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) · [Fiche Qwen3-4B](https://huggingface.co/Qwen/Qwen3-4B)
+
+Pour chaque candidat, consigner révision exacte, modèle de base, tokenizer, quantification et licence applicable aux poids utilisés. Sur le Mac, vérifier que le modèle tient en mémoire à la longueur de contexte retenue, puis relever pic mémoire, latence par requête et coût observé. Comparer la justesse de l’extraction française, la gestion des quantités inconnues et des ambiguïtés ainsi que la proportion de sorties valides contre la branche T03. Documenter erreurs et dénominateurs. **Retenir au plus un modèle initial** pour T11 à l’issue de cette comparaison. Si aucun ne satisfait la licence, les ressources disponibles et les critères qualité fixés en T10, garder la baseline et documenter la décision. Le choix et les essais appartiennent à P2. MLX-LM ou Ollama peuvent assurer l’inférence locale. PyTorch reste prévu pour l’apprentissage de l’entraînement.
 
 | Ticket | Charge | Dépendance | Réalisation et preuve de sortie |
 |---|---:|---|---|
