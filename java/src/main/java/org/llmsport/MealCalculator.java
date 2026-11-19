@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -25,9 +26,21 @@ final class MealCalculator {
     static final List<String> DEFAULTS = List.of("energy", "protein", "carbohydrate", "fat");
     private static final int FR = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.UNICODE_CHARACTER_CLASS;
     private static final Pattern DISPLAY = Pattern.compile("[.!?]\\s*affiche\\b[^.!?]*[.!?]?\\s*$", FR);
-    private static final Pattern SPLIT = Pattern.compile("(?<![0-9]),|,(?![0-9])|;|\\s+et\\s+", FR);
+    private static final Pattern SPLIT = Pattern.compile("(\\s+et\\s+(?=non\\b))|\\s+et\\s+|;|(?<![0-9]),|,(?![0-9])", FR);
+    private static final String NUMBER = "[+-]?[0-9]+(?:[.,][0-9]+)?";
+    private static final String UNIT = "kg|g|ml|l|portions?|bols?";
+    private static final String NUMBER_WITH_UNIT = NUMBER + "\\s*(?:" + UNIT + ")";
+    private static final String QUANTITY_CHOICES = NUMBER_WITH_UNIT + "(?:\\s+ou\\s+" + NUMBER_WITH_UNIT + ")*";
+    private static final String CORRECTION_HEADER = "(?:correction(?:\\s+du\\s+repas)?\\s*:\\s*)?";
+    private static final String CORRECTION_FOOD = CORRECTION_HEADER + "pour\\s+(?<food>[^,:;]+),\\s*";
+    private static final Pattern QUANTITATIVE_CORRECTION = Pattern.compile(
+            CORRECTION_FOOD + QUANTITY_CHOICES + "\\s+et\\s+non\\s+" + QUANTITY_CHOICES, FR);
+    private static final Pattern REPLACED_AMOUNT = Pattern.compile(
+            CORRECTION_FOOD + "(?<amount>" + NUMBER_WITH_UNIT + ")\\s+et\\s+non\\s+" + NUMBER_WITH_UNIT, FR);
+    private static final Pattern RETAINED_AMOUNT = Pattern.compile(
+            CORRECTION_HEADER + "(?<food>[^,:;]+?)\\s+reste\\s+à\\s+(?<amount>" + NUMBER_WITH_UNIT + ")", FR);
     private static final Pattern MASS = Pattern.compile(
-            "^(?:([+-]?[0-9]+(?:[.,][0-9]+)?)\\s*(kg|g|ml|l|portions?|bols?)?|un\\s+bol)"
+            "^(?:(" + NUMBER + ")\\s*(" + UNIT + ")?|un\\s+bol)"
                     + "(?![\\p{L}0-9.,])\\s*", FR);
     private static final Pattern STATED_STATES = Pattern.compile("\\b(cuit(?:e)?s?|cru(?:e)?s?)\\b", FR);
     private static final Pattern STATE = Pattern.compile("\\s+(cuit(?:e)?s?|cru(?:e)?s?)$", FR);
@@ -49,6 +62,23 @@ final class MealCalculator {
     private record Food(String id, String label, String state, BigDecimal basis, Map<String, BigDecimal> values) {}
     private record Catalog(String version, Map<String, Food> foods, Map<String, String> units) {}
     private record Portion(String id, ObjectNode source, BigDecimal grams, Food food, String missing) {}
+    private enum QuantityWording { ORDINARY, CORRECTED, UNCHANGED }
+
+    private record MealFragment(String text, String amountFirst, QuantityWording quantityWording) {
+        private static MealFragment parse(String text) {
+            Matcher replaced = REPLACED_AMOUNT.matcher(text);
+            if (replaced.matches()) {
+                return new MealFragment(text, replaced.group("amount") + " " + replaced.group("food").strip(),
+                        QuantityWording.CORRECTED);
+            }
+            Matcher retained = RETAINED_AMOUNT.matcher(text);
+            if (retained.matches()) {
+                return new MealFragment(text, retained.group("amount") + " " + retained.group("food").strip(),
+                        QuantityWording.UNCHANGED);
+            }
+            return new MealFragment(text, text, QuantityWording.ORDINARY);
+        }
+    }
 
     // A single SELECT pins the active version, its foods and its reference values to one snapshot.
     private static Catalog catalog(Connection db) throws SQLException {
@@ -111,7 +141,9 @@ final class MealCalculator {
                 || wording.length() > 2 && (wording + "s").equalsIgnoreCase(label);
     }
 
-    private static Portion portion(ObjectMapper mapper, JsonNode input, JsonNode mention, String phrase, Catalog catalog, boolean corrected) {
+    private static Portion portion(ObjectMapper mapper, JsonNode input, JsonNode mention, MealFragment fragment,
+                                   Catalog catalog, boolean corrected) {
+        String phrase = fragment.text;
         JsonNode source = mention.path("source");
         check(phrase.equals(mention.path("text").textValue()) && phrase.equals(source.path("text").textValue())
                 && input.path("entry_id").equals(source.path("input_id"))
@@ -123,7 +155,7 @@ final class MealCalculator {
         origin.set("input_revision", input.get("entry_revision"));
         origin.put("text", phrase);
 
-        String wording = phrase;
+        String wording = fragment.amountFirst;
         Matcher amount = MASS.matcher(wording);
         BigDecimal value = null;
         String unit = null;
@@ -253,28 +285,56 @@ final class MealCalculator {
         return row;
     }
 
-    private static List<String> fragments(String text) {
+    private static List<MealFragment> fragments(String text) {
         String declaration = DISPLAY.matcher(text).replaceFirst("");
-        List<String> fragments = SPLIT.splitAsStream(declaration).map(MealCalculator::trim)
-                .filter(fragment -> !fragment.isEmpty()).toList();
-        return fragments.isEmpty() ? List.of(text) : fragments;
+        List<MatchResult> separators = SPLIT.matcher(declaration).results().toList();
+        List<String> parts = new ArrayList<>();
+        int start = 0;
+        boolean correction = false;
+        for (int i = 0; i < separators.size(); i++) {
+            MatchResult separator = separators.get(i);
+            if (correction && separator.group(1) != null) continue;
+            // Keep the comma and « et non » inside a mention only when they introduce quantities.
+            if (separator.group().equals(",") && i + 1 < separators.size()
+                    && separators.get(i + 1).group(1) != null) {
+                int end = i + 2 < separators.size() ? separators.get(i + 2).start() : declaration.length();
+                if (QUANTITATIVE_CORRECTION.matcher(trim(declaration.substring(start, end))).matches()) {
+                    correction = true;
+                    continue;
+                }
+            }
+            correction = false;
+            parts.add(declaration.substring(start, separator.start()));
+            start = separator.end();
+        }
+        parts.add(declaration.substring(start));
+        List<MealFragment> fragments = parts.stream().map(MealCalculator::trim)
+                .filter(fragment -> !fragment.isEmpty()).map(MealFragment::parse).toList();
+        return fragments.isEmpty() ? List.of(MealFragment.parse(text)) : fragments;
     }
 
-    private static Set<String> correctionPositions(JsonNode input, int count) {
-        Set<String> positions = new HashSet<>();
-        for (int i = 0; i < count; i++) positions.add("m" + (i + 1));
+    private static Set<String> correctionPositions(JsonNode input, List<MealFragment> fragments) {
+        Set<String> explicit = new HashSet<>();
+        input.path("corrected_mentions").forEach(mark -> explicit.add(mark.textValue()));
+        boolean revised = input.path("entry_revision").longValue() > 1;
         Set<String> corrected = new HashSet<>();
-        input.path("corrected_mentions").forEach(mark -> corrected.add(mark.textValue()));
-        if (!positions.containsAll(corrected)) throw new InvalidCorrection();
+        for (int i = 0; i < fragments.size(); i++) {
+            String position = "m" + (i + 1);
+            QuantityWording wording = fragments.get(i).quantityWording;
+            boolean marked = explicit.remove(position);
+            if (marked && wording == QuantityWording.UNCHANGED) throw new InvalidCorrection();
+            if (marked || (revised && wording == QuantityWording.CORRECTED)) corrected.add(position);
+        }
+        if (!explicit.isEmpty()) throw new InvalidCorrection();
         return corrected;
     }
 
     static void validateDeclaration(Connection db, JsonNode input) throws SQLException {
         selection(input.path("selected_nutrients"), catalog(db));
-        List<String> fragments = fragments(input.path("text").textValue());
-        correctionPositions(input, fragments.size());
-        for (String fragment : fragments) {
-            Matcher amount = MASS.matcher(fragment);
+        List<MealFragment> fragments = fragments(input.path("text").textValue());
+        correctionPositions(input, fragments);
+        for (MealFragment fragment : fragments) {
+            Matcher amount = MASS.matcher(fragment.amountFirst);
             if (amount.find()) massNumber(amount);
         }
     }
@@ -283,8 +343,8 @@ final class MealCalculator {
             throws SQLException {
         Catalog catalog = catalog(db);
         List<String> ids = selection(input.path("selected_nutrients"), catalog);
-        List<String> fragments = fragments(input.path("text").textValue());
-        Set<String> corrected = correctionPositions(input, fragments.size());
+        List<MealFragment> fragments = fragments(input.path("text").textValue());
+        Set<String> corrected = correctionPositions(input, fragments);
         JsonNode mentions = proposal.path("food_mentions");
         check(mentions.size() == fragments.size());
         Set<String> seen = new HashSet<>();
