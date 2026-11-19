@@ -30,11 +30,13 @@ final class MealCalculator {
     private static final String NUMBER = "[+-]?[0-9]+(?:[.,][0-9]+)?";
     private static final String UNIT = "kg|g|ml|l|portions?|bols?";
     private static final String NUMBER_WITH_UNIT = NUMBER + "\\s*(?:" + UNIT + ")";
+    private static final String QUANTITY_CHOICES = NUMBER_WITH_UNIT + "(?:\\s+ou\\s+" + NUMBER_WITH_UNIT + ")*";
     private static final String CORRECTION_HEADER = "(?:correction(?:\\s+du\\s+repas)?\\s*:\\s*)?";
-    private static final String CORRECTION_FOOD = CORRECTION_HEADER + "pour\\s+(?<food>[^,:;]+)";
-    private static final Pattern CORRECTION_PREFIX = Pattern.compile(CORRECTION_FOOD, FR);
+    private static final String CORRECTION_FOOD = CORRECTION_HEADER + "pour\\s+(?<food>[^,:;]+),\\s*";
+    private static final Pattern QUANTITATIVE_CORRECTION = Pattern.compile(
+            CORRECTION_FOOD + QUANTITY_CHOICES + "\\s+et\\s+non\\s+" + QUANTITY_CHOICES, FR);
     private static final Pattern REPLACED_AMOUNT = Pattern.compile(
-            CORRECTION_FOOD + ",\\s*(?<amount>" + NUMBER_WITH_UNIT + ")\\s+et\\s+non\\s+" + NUMBER_WITH_UNIT, FR);
+            CORRECTION_FOOD + "(?<amount>" + NUMBER_WITH_UNIT + ")\\s+et\\s+non\\s+" + NUMBER_WITH_UNIT, FR);
     private static final Pattern RETAINED_AMOUNT = Pattern.compile(
             CORRECTION_HEADER + "(?<food>[^,:;]+?)\\s+reste\\s+à\\s+(?<amount>" + NUMBER_WITH_UNIT + ")", FR);
     private static final Pattern MASS = Pattern.compile(
@@ -292,12 +294,17 @@ final class MealCalculator {
         for (int i = 0; i < separators.size(); i++) {
             MatchResult separator = separators.get(i);
             if (correction && separator.group(1) != null) continue;
-            String part = declaration.substring(start, separator.start());
-            // « pour <aliment>, ... et non ... » is one mention.
-            correction = separator.group().equals(",") && i + 1 < separators.size()
-                    && separators.get(i + 1).group(1) != null && CORRECTION_PREFIX.matcher(trim(part)).matches();
-            if (correction) continue;
-            parts.add(part);
+            // Keep the comma and « et non » inside a mention only when they introduce quantities.
+            if (separator.group().equals(",") && i + 1 < separators.size()
+                    && separators.get(i + 1).group(1) != null) {
+                int end = i + 2 < separators.size() ? separators.get(i + 2).start() : declaration.length();
+                if (QUANTITATIVE_CORRECTION.matcher(trim(declaration.substring(start, end))).matches()) {
+                    correction = true;
+                    continue;
+                }
+            }
+            correction = false;
+            parts.add(declaration.substring(start, separator.start()));
             start = separator.end();
         }
         parts.add(declaration.substring(start));

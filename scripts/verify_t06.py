@@ -158,6 +158,41 @@ def check_correction_variants(db, port):
           "alternative ambiguë conservée et découpage ordinaire préservé")
 
 
+def check_ordinary_food_negation(db, port):
+    entry = "T06-FOOD-NEGATION"
+    text = "Pour le déjeuner, 80 g de riz cuit et non du riz cru ; 120 g de poulet cuit."
+    meal = {"entry_id": entry, "entry_revision": 1, "text": text, "selected_nutrients": ["energy"]}
+    result = request(port, "POST", "/meals", meal)
+    energy, = result["report"]["nutrients"]
+    assert (energy["value"], energy["unit"], energy["status"]) == (302, "kcal", "partiel"), energy
+    rice, chicken = energy["provenance"]
+    for part, mention, food, grams, fragment, kcal in (
+        (rice, "m2", "D01", 80, "80 g de riz cuit", 104),
+        (chicken, "m4", "D02", 120, "120 g de poulet cuit", 198),
+    ):
+        assert (part["item_id"], part["value"]) == (mention, kcal)
+        assert part["quantity"] == {"value": grams, "unit": "g", "source": {
+            "kind": "user_declaration", "input_id": entry, "input_revision": 1, "text": fragment,
+        }}
+        assert part["reference"]["source"] == {
+            "kind": "catalog", "catalog_id": "DEMO-FOOD", "catalog_version": "0.2.0",
+            "record_id": food, "field": "nutrients.energy",
+        }
+    assert [(part["item_id"], part["source"]["text"]) for part in energy["missing"]] == [
+        ("m1", "Pour le déjeuner"), ("m3", "non du riz cru"),
+    ]
+    assert request(port, "GET", f"/meals/{entry}/revisions/1") == persisted(db, "meal", entry, 1) == result
+
+    meal = {**meal, "entry_id": "T06-FOOD-NEGATED-AMOUNT",
+            "text": "Pour ce repas, 100 g de riz cuit et non 150 g."}
+    energy, = request(port, "POST", "/meals", meal)["report"]["nutrients"]
+    rice, = energy["provenance"]
+    assert (energy["value"], energy["status"], rice["quantity"]["value"]) == (130, "partiel", 100)
+    assert rice["quantity"]["source"]["text"] == "100 g de riz cuit"
+    print("PASS négations ordinaires : 302 kcal partielles et sources vérifiées par POST/GET/SQL, "
+          "aliment avec masse autonome conservé devant « et non 150 g »")
+
+
 def check_oracle(db, port, meal, oracle_name, *, headers=None):
     expected = read(ROOT / "contracts/examples" / oracle_name)
     result = request(port, "POST", "/meals", meal, headers=headers)
@@ -244,6 +279,7 @@ def verify():
             print("PASS F10 : 295 kcal et 33,5 g complets sur r2, sources par aliment ; "
                   "r1 inchangée à 360 kcal et 34,75 g ; POST/GET/SQL")
             check_correction_variants(db, port)
+            check_ordinary_food_negation(db, port)
 
             variant = logs / "salt.json"
             salt_catalog(variant)

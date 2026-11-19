@@ -31,11 +31,14 @@ NUMBER = r"[+-]?\d+(?:[.,]\d+)?"
 UNIT = r"kg|g|ml|l|portions?|bols?"
 AMOUNT = re.compile(rf"^(?:({NUMBER})\s*({UNIT})|un\s+bol)\b", re.IGNORECASE)
 NUMBER_WITH_UNIT = rf"{NUMBER}\s*(?:{UNIT})"
+QUANTITY_CHOICES = rf"{NUMBER_WITH_UNIT}(?:\s+ou\s+{NUMBER_WITH_UNIT})*"
 CORRECTION_HEADER = r"(?:correction(?:\s+du\s+repas)?\s*:\s*)?"
-CORRECTION_FOOD = rf"{CORRECTION_HEADER}pour\s+(?P<food>[^,:;]+)"
-CORRECTION_PREFIX = re.compile(CORRECTION_FOOD, re.IGNORECASE)
+CORRECTION_FOOD = rf"{CORRECTION_HEADER}pour\s+[^,:;]+,\s*"
+QUANTITATIVE_CORRECTION = re.compile(
+    rf"{CORRECTION_FOOD}{QUANTITY_CHOICES}\s+et\s+non\s+{QUANTITY_CHOICES}", re.IGNORECASE,
+)
 REPLACED_AMOUNT = re.compile(
-    rf"{CORRECTION_FOOD},\s*(?P<amount>{NUMBER_WITH_UNIT})\s+et\s+non\s+{NUMBER_WITH_UNIT}",
+    rf"{CORRECTION_FOOD}(?P<amount>{NUMBER_WITH_UNIT})\s+et\s+non\s+{NUMBER_WITH_UNIT}",
     re.IGNORECASE,
 )
 RETAINED_AMOUNT = re.compile(
@@ -63,6 +66,10 @@ def declared_quantity(fragment, source):
     return None, ("quantity_absent", "Quelle quantité de cet aliment as-tu consommée ?")
 
 
+def trim_fragment(text):
+    return text.strip().rstrip(".!?").strip()
+
+
 def meal_fragments(text):
     content = DISPLAY_SUFFIX.sub("", text)
     start = 0
@@ -72,16 +79,17 @@ def meal_fragments(text):
     for index, separator in enumerate(separators):
         if correction and separator[1]:
             continue
-        part = content[start:separator.start()]
-        # La virgule et « et non » restent dans la mention lorsqu’ils introduisent une correction.
-        correction = (separator[0] == "," and index + 1 < len(separators) and separators[index + 1][1] is not None
-                      and CORRECTION_PREFIX.fullmatch(part.strip()) is not None)
-        if correction:
-            continue
-        parts.append(part)
+        # Conserver la virgule et « et non » uniquement entre quantités de la même mention.
+        if separator[0] == "," and index + 1 < len(separators) and separators[index + 1][1]:
+            end = separators[index + 2].start() if index + 2 < len(separators) else len(content)
+            if QUANTITATIVE_CORRECTION.fullmatch(trim_fragment(content[start:end])):
+                correction = True
+                continue
+        correction = False
+        parts.append(content[start:separator.start()])
         start = separator.end()
     parts.append(content[start:])
-    fragments = [part.strip().rstrip(".!?").strip() for part in parts]
+    fragments = [trim_fragment(part) for part in parts]
     return [fragment for fragment in fragments if fragment] or [text]
 
 
