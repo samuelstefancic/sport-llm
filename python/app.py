@@ -25,9 +25,23 @@ app = FastAPI()
 logger = logging.getLogger("uvicorn.error")
 
 # Virgule décimale française dans « 12,5 g » ou séparateur entre deux aliments.
-FOOD_SEPARATOR = re.compile(r"\s+et\s+|;|(?<!\d),|,(?!\d)", re.IGNORECASE)
+FOOD_SEPARATOR = re.compile(r"(\s+et\s+(?=non\b))|\s+et\s+|;|(?<!\d),|,(?!\d)", re.IGNORECASE)
 DISPLAY_SUFFIX = re.compile(r"[.!?]\s*affiche\b[^.!?]*[.!?]?\s*$", re.IGNORECASE)
-AMOUNT = re.compile(r"^(?:([+-]?\d+(?:[.,]\d+)?)\s*(kg|g|ml|l|portions?|bols?)|un\s+bol)\b", re.IGNORECASE)
+NUMBER = r"[+-]?\d+(?:[.,]\d+)?"
+UNIT = r"kg|g|ml|l|portions?|bols?"
+AMOUNT = re.compile(rf"^(?:({NUMBER})\s*({UNIT})|un\s+bol)\b", re.IGNORECASE)
+NUMBER_WITH_UNIT = rf"{NUMBER}\s*(?:{UNIT})"
+CORRECTION_HEADER = r"(?:correction(?:\s+du\s+repas)?\s*:\s*)?"
+CORRECTION_FOOD = rf"{CORRECTION_HEADER}pour\s+(?P<food>[^,:;]+)"
+CORRECTION_PREFIX = re.compile(CORRECTION_FOOD, re.IGNORECASE)
+REPLACED_AMOUNT = re.compile(
+    rf"{CORRECTION_FOOD},\s*(?P<amount>{NUMBER_WITH_UNIT})\s+et\s+non\s+{NUMBER_WITH_UNIT}",
+    re.IGNORECASE,
+)
+RETAINED_AMOUNT = re.compile(
+    rf"{CORRECTION_HEADER}[^,:;]+?\s+reste\s+à\s+(?P<amount>{NUMBER_WITH_UNIT})",
+    re.IGNORECASE,
+)
 STATES = re.compile(r"\b(cru(?:e)?s?|cuit(?:e)?s?)\b", re.IGNORECASE)
 
 
@@ -49,13 +63,32 @@ def declared_quantity(fragment, source):
     return None, ("quantity_absent", "Quelle quantité de cet aliment as-tu consommée ?")
 
 
+def meal_fragments(text):
+    content = DISPLAY_SUFFIX.sub("", text)
+    start = 0
+    parts = []
+    separators = list(FOOD_SEPARATOR.finditer(content))
+    correction = False
+    for index, separator in enumerate(separators):
+        if correction and separator[1]:
+            continue
+        part = content[start:separator.start()]
+        # La virgule et « et non » restent dans la mention lorsqu’ils introduisent une correction.
+        correction = (separator[0] == "," and index + 1 < len(separators) and separators[index + 1][1] is not None
+                      and CORRECTION_PREFIX.fullmatch(part.strip()) is not None)
+        if correction:
+            continue
+        parts.append(part)
+        start = separator.end()
+    parts.append(content[start:])
+    fragments = [part.strip().rstrip(".!?").strip() for part in parts]
+    return [fragment for fragment in fragments if fragment] or [text]
+
+
 def meal_proposal(meal):
-    content = DISPLAY_SUFFIX.sub("", meal.text)
-    parts = [part.strip().rstrip(".!?").strip() for part in FOOD_SEPARATOR.split(content)]
-    fragments = [part for part in parts if part] or [meal.text]
     mentions = []
     clarifications = []
-    for index, fragment in enumerate(fragments, 1):
+    for index, fragment in enumerate(meal_fragments(meal.text), 1):
         mention_id = f"m{index}"
         source = {
             "kind": "user_declaration",
@@ -63,7 +96,8 @@ def meal_proposal(meal):
             "input_revision": meal.entry_revision,
             "text": fragment,
         }
-        quantity, problem = declared_quantity(fragment, source)
+        explicit = REPLACED_AMOUNT.fullmatch(fragment) or RETAINED_AMOUNT.fullmatch(fragment)
+        quantity, problem = declared_quantity(explicit["amount"] if explicit else fragment, source)
         states = {"raw" if word.lower().startswith("cru") else "cooked" for word in STATES.findall(fragment)}
         mentions.append({
             "mention_id": mention_id,

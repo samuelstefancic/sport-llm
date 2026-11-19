@@ -7,6 +7,7 @@ import sys
 from jsonschema import Draft202012Validator
 
 from journal_test import ROOT, build_jar, java_service, journal_db, persisted, request, running, uvicorn
+from t08_peer import controlled_peer
 from verify_t05 import SOURCE, run_cli
 
 
@@ -37,6 +38,124 @@ def references(parts):
 def missing(parts):
     return sorted((c["reason"], c["source"]["record_id"], c["source"]["catalog_version"],
                    c["source"]["field"]) for c in parts)
+
+
+def check_correction_report(result, meal, totals, portions):
+    report = result["report"]
+    schema = read(ROOT / "contracts/analysis.schema.json")
+    Draft202012Validator({**schema, "oneOf": [{"$ref": "#/$defs/java_nutrition_report"}]}).validate(report)
+    assert (report["meal_id"], report["meal_revision"]) == (meal["entry_id"], meal["entry_revision"])
+    assert report["selected_nutrients"] == meal["selected_nutrients"]
+    actual = [(row["id"], row["value"], row["unit"], row["status"]) for row in report["nutrients"]]
+    assert actual == totals, (meal["entry_id"], meal["entry_revision"], actual, totals)
+    assert not result["clarifications"]
+    catalog = read(SOURCE)
+    foods = {food["food_id"]: food for food in catalog["items"]}
+    for row in report["nutrients"]:
+        assert not row["missing"]
+        assert len(row["provenance"]) == len(portions)
+        for index, (part, (food, quantity, kind, fragment)) in enumerate(zip(row["provenance"], portions), 1):
+            assert part["item_id"] == f"m{index}"
+            assert part["quantity"] == {"value": quantity, "unit": "g", "source": {
+                "kind": kind, "input_id": meal["entry_id"], "input_revision": meal["entry_revision"],
+                "text": fragment,
+            }}
+            assert fragment in meal["text"]
+            reference = foods[food]["nutrients"][row["id"]]
+            basis = foods[food]["basis"]["value"]
+            assert part["reference"] == {"value": reference["value"], "unit": reference["unit"], "basis_mass_g": basis,
+                                         "source": {"kind": "catalog", "record_id": food, "field": "nutrients." + row["id"],
+                                                    "catalog_id": catalog["catalog_id"], "catalog_version": catalog["version"]}}
+            assert Decimal(str(part["value"])) == Decimal(str(quantity)) * Decimal(str(reference["value"])) / basis
+
+
+def check_f10(db, port, case, *, markers):
+    entry = "T06-F10-STRUCTURED" if markers else "T06-F10"
+    selection = {"selected_nutrients": case["selected_nutrients"]}
+    previous, current = (f"/meals/{entry}/revisions/{revision}" for revision in (1, 2))
+    r1 = {"entry_id": entry, "entry_revision": 1, "text": "150 g de riz cuit, 100 g de poulet cuit", **selection}
+    initial = request(port, "POST", "/meals", r1, headers={"Idempotency-Key": entry})
+    check_correction_report(initial, r1, [("energy", 360, "kcal", "complet"), ("protein", 34.75, "g", "complet")], [
+        ("D01", 150, "user_declaration", "150 g de riz cuit"),
+        ("D02", 100, "user_declaration", "100 g de poulet cuit"),
+    ])
+    original = request(port, "GET", previous + "/declaration")
+    assert original["text"] == r1["text"]
+
+    def saved_declarations():
+        return db.execute("""SELECT entry_revision, body FROM journal_declaration WHERE entry_id=%s
+                             ORDER BY entry_revision""", (entry,)).fetchall()
+
+    assert saved_declarations() == [(1, original)]
+    text = case["input"]
+    data = {"text": text, **selection}
+    if markers:
+        data["corrected_mentions"] = markers
+    r2 = {**data, "entry_id": entry, "entry_revision": 2}
+    result = request(port, "POST", "/meals", r2)
+    totals = [(row["id"], row["value"], row["unit"], row["status"]) for row in case["expected"]["nutrients"]]
+    rice, chicken = (part.strip().rstrip(".") for part in text.split(";"))
+    check_correction_report(result, r2, totals, [
+        ("D01", 100, "user_correction", rice),
+        ("D02", 100, "user_declaration", chicken),
+    ])
+    assert request(port, "GET", f"/meals/{entry}") == request(port, "GET", current) == persisted(db, "meal", entry, 2) == result
+    assert request(port, "GET", previous) == persisted(db, "meal", entry, 1) == initial
+    assert request(port, "POST", "/meals", r1, headers={"Idempotency-Key": entry}) == initial
+    declaration = request(port, "GET", current + "/declaration")
+    assert declaration["text"] == text and declaration["corrected_mentions"] == markers
+    assert request(port, "GET", previous + "/declaration") == original
+    assert saved_declarations() == [(1, original), (2, declaration)]
+    assert db.execute("SELECT current_revision FROM journal_entry WHERE entry_id=%s", (entry,)).fetchone() == (2,)
+
+
+def check_correction_variants(db, port):
+    entry = "T06-CORRECTION-DECIMAL"
+    base = {"entry_id": entry, "selected_nutrients": ["energy", "protein"]}
+    r1 = {**base, "entry_revision": 1, "text": "87,5 g de poulet cuit, 150 g de riz cuit, 20 g de lentilles cuites"}
+    initial = request(port, "POST", "/meals", r1)
+    chicken = "Correction : le poulet cuit reste à 87,5 g"
+    rice = "pour le riz cuit, 92.5 g et  non 150 g"
+    lentils = "20 g de lentilles cuites"
+    text = f"{chicken} et {rice}, {lentils}."
+    current = f"/meals/{entry}/revisions/2"
+    declaration = {"text": text, "selected_nutrients": base["selected_nutrients"]}
+    r2 = {**base, "entry_revision": 2, "text": text}
+    for method, path, body in (("PUT", current + "/declaration", declaration), ("POST", "/meals", r2)):
+        denied = request(port, method, path, {**body, "corrected_mentions": ["m1"]}, expected=400)
+        assert denied == {"error": "invalid_correction"}
+        request(port, "GET", current + "/declaration", expected=404)
+        assert request(port, "GET", f"/meals/{entry}") == initial
+    assert request(port, "PUT", current + "/declaration", declaration)["text"] == text
+    result = request(port, "POST", "/meals", r2)
+    check_correction_report(result, r2, [("energy", 288.625, "kcal", "complet"), ("protein", 31.2375, "g", "complet")], [
+        ("D02", 87.5, "user_declaration", chicken),
+        ("D01", 92.5, "user_correction", rice),
+        ("D04", 20, "user_declaration", lentils),
+    ])
+    assert request(port, "GET", current) == persisted(db, "meal", entry, 2) == result
+
+    ambiguous = "pour le riz cuit, 90 g ou 110 g et non 150 g"
+    simple = {"entry_id": "T06-CORRECTION-AMBIGUOUS", "entry_revision": 1,
+              "text": "150 g de riz cuit, 75 g de poulet cuit", "selected_nutrients": ["energy"]}
+    request(port, "POST", "/meals", simple)
+    mixed = {**simple, "entry_revision": 2, "text": f"{ambiguous} ; le poulet cuit reste à 75 g."}
+    result = request(port, "POST", "/meals", mixed)
+    energy, = result["report"]["nutrients"]
+    missing_rice, = energy["missing"]
+    chicken_part, = energy["provenance"]
+    assert (energy["value"], energy["status"]) == (123.75, "partiel")
+    assert chicken_part["reference"]["source"]["record_id"] == "D02"
+    assert chicken_part["quantity"]["value"] == 75
+    assert missing_rice["source"]["text"] == ambiguous and result["clarifications"]
+
+    ordinary = {**simple, "entry_id": "T06-POUR-ORDINARY",
+                "text": "Pour ce repas, 100 g de riz cuit, 100 g de poulet cuit."}
+    energy, = request(port, "POST", "/meals", ordinary)["report"]["nutrients"]
+    assert (energy["value"], energy["status"]) == (295, "partiel")
+    assert [part["reference"]["source"]["record_id"] for part in energy["provenance"]] == ["D01", "D02"]
+    print("PASS corrections décimales et ordre inversé, rejet du marqueur contradictoire par PUT et POST, "
+          "alternative ambiguë conservée et découpage ordinaire préservé")
 
 
 def check_oracle(db, port, meal, oracle_name, *, headers=None):
@@ -71,7 +190,8 @@ def check_oracle(db, port, meal, oracle_name, *, headers=None):
 def verify():
     with journal_db() as (dsn, db), java_service(db) as (port, python_port, logs):
         with running(uvicorn("app:app", "python", python_port), python_port, logs / "python.log"):
-            cases = {case["id"]: case["input"] for case in read(ROOT / "data/dev/cases.json")["cases"]}
+            fixtures = {case["id"]: case for case in read(ROOT / "data/dev/cases.json")["cases"]}
+            cases = {key: case["input"] for key, case in fixtures.items()}
             f02 = {"entry_id": "T06-F02", "entry_revision": 1,
                    "text": cases["F02"]}
             original = check_oracle(db, port, f02, "java-macros-complete.json")
@@ -119,6 +239,12 @@ def verify():
             assert not db.execute("SELECT 1 FROM journal_result WHERE entry_id='T06-BLANK'").fetchone()
             print("PASS espace insécable seul : HTTP 400, aucune écriture")
 
+            check_f10(db, port, fixtures["F10"], markers=[])
+            check_f10(db, port, fixtures["F10"], markers=["m1"])
+            print("PASS F10 : 295 kcal et 33,5 g complets sur r2, sources par aliment ; "
+                  "r1 inchangée à 360 kcal et 34,75 g ; POST/GET/SQL")
+            check_correction_variants(db, port)
+
             variant = logs / "salt.json"
             salt_catalog(variant)
             run_cli(dsn, variant)
@@ -140,6 +266,18 @@ def verify():
             assert not db.execute("SELECT 1 FROM journal_result WHERE entry_id='T06-FORGED'").fetchone()
             print("PASS proposition Python structurellement valide avec quantité 150 g pour 100 g déclarés : "
                   "HTTP 502, aucune écriture")
+
+        with controlled_peer(python_port) as peer:
+            entry = "T06-F10-FORGED"
+            r1 = {"entry_id": entry, "entry_revision": 1, "text": "150 g de riz cuit, 100 g de poulet cuit"}
+            initial = request(port, "POST", "/meals", r1)
+            peer.faults[(entry, 2)] = "quantity"
+            r2 = {**r1, "entry_revision": 2, "text": cases["F10"]}
+            assert request(port, "POST", "/meals", r2, expected=502) == {"error": "invalid_proposal"}
+            request(port, "GET", f"/meals/{entry}/revisions/2", expected=404)
+            request(port, "GET", f"/meals/{entry}/revisions/2/declaration", expected=404)
+            assert request(port, "GET", f"/meals/{entry}") == persisted(db, "meal", entry, 1) == initial
+            print("PASS quantité falsifiée dans la proposition de correction : HTTP 502, aucune r2 persistée")
 
 
 if __name__ == "__main__":
