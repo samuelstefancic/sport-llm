@@ -6,10 +6,11 @@ import sys
 from jsonschema import Draft202012Validator
 
 from journal_test import ROOT, build_jar, java_service, journal_db, persisted, request, running, uvicorn
-from t07_faults import proposal
+from t07_faults import COMPACT_FAULTS, proposal
 
 
 DISTANCE_GOAL = "Sortie à vélo : objectif 10 km, mais j’ai parcouru 4,5 km."
+COMPACT_RUN = "Course : 12km345 en 1h08."
 
 
 def read(path):
@@ -154,6 +155,14 @@ def verify_faults(db, port):
     refused(db, port, entry, 502, "invalid_proposal")
     assert db.execute("SELECT body FROM journal_declaration WHERE entry_id=%s", (entry["entry_id"],)).fetchone() is None
     print("PASS objectif réintroduit par le pair Python : HTTP 502, aucune écriture")
+
+    for suffix in COMPACT_FAULTS:
+        entry = body(f"T07-{suffix}", COMPACT_RUN)
+        validator.validate(proposal(entry))
+        refused(db, port, entry, 502, "invalid_proposal")
+        assert db.execute("SELECT body FROM journal_declaration WHERE entry_id=%s", (entry["entry_id"],)).fetchone() is None
+    print("PASS mesures compactes falsifiées par le pair Python : omission, citation tronquée, révision modifiée ; "
+          "HTTP 502, aucune écriture")
 
 
 def verify_distance_goals(db, port):
@@ -336,6 +345,62 @@ def verify_measure_notation(db, port):
     print("PASS milliers avec espace, espace insécable ou fine insécable : valeur et source entières ; POST/GET/SQL")
 
 
+def verify_compact_measures(db, port):
+    distance = ("distance", 12345, "m", "12km345")
+    duration = ("duration", 68, "min", "1h08")
+    for suffix, declaration, expected in (
+        ("RUN", COMPACT_RUN, (distance, duration)),
+        ("UPPERCASE", "Course : 12KM345 en 1H59.",
+         (("distance", 12345, "m", "12KM345"), ("duration", 119, "min", "1H59"))),
+        ("ZERO", "Course : 0km000. Durée : 0h00.", (("distance", 0, "m", "0km000"), ("duration", 0, "min", "0h00"))),
+        ("SHORT-DISTANCE", "Course : 12km34 en 1h08.", (duration,)),
+        ("BAD-MINUTES", "Course : 12km345 en 1h68.", (distance,)),
+        ("BAD-LENGTH-AND-SUFFIX", "Course : 12km3456 en 1h08x.", ()),
+        ("BAD-INTERNAL-SIGNS", "Course : 12km-345 en 1h+08.", ()),
+        ("BAD-INTERNAL-SEPARATORS", "Course : 12km:345 m en 1h:08 min.", ()),
+        ("BAD-DECIMAL-SUFFIX", "Course : 12km345,6 en 1h08.", (duration,)),
+        ("PACE", "Course : 12km345 en 1h08 / km.", (distance,)),
+        ("SPEED", "Course : 12km345/h pendant 1h08.", (duration,)),
+        ("CLOCK", "Course : rendez-vous à 1h08.", ()),
+        ("APPOINTMENT", "Course : rendez-vous en 1h08.", ()),
+        ("CLOCK-THEN-ELAPSED", "Course : départ à 7h00 puis 12km345 en 1h08.", (distance, duration)),
+        ("GOAL", "Course : objectif 12km345 en 1h08.", ()),
+        ("GOAL-PARTS", "Course : objectif 12km345 et 500 m.", ()),
+        ("GOAL-INVALID-PART", "Course : objectif 12km34 et 500 m atteint.", ()),
+    ):
+        entry = body(f"T07-COMPACT-{suffix}", declaration)
+        result = saved(db, port, entry, "running")
+        assert result["measures"] == [
+            {"id": field, "value": value, "unit": unit, "source": source(entry, fragment)}
+            for field, value, unit, fragment in expected], result["measures"]
+        for field, value, unit, fragment in expected:
+            known(result, field, value, unit, entry, fragment)
+        for field in {"distance", "duration"} - {item[0] for item in expected}:
+            absent(result, field)
+        assert [question["field"] for question in result["clarifications"]] == ([] if expected else ["duration"])
+
+    entry = body("T07-COMPACT-ALTERNATIVE", "Course : 12km345 en 1h08 ou 1h15.")
+    result = saved(db, port, entry, "running")
+    known(result, "distance", 12345, "m", entry, "12km345")
+    duration_choice(result, entry, ((68, "min", "1h08"), (75, "min", "1h15")))
+
+    entry = body("T07-COMPACT-GOAL-REACHED", "Course : objectif 12km345 et 500 m atteint en 1h08.")
+    result = saved(db, port, entry, "running")
+    known(result, "distance", 12845, "m", entry, "12km345", "500 m")
+    known(result, "duration", 68, "min", entry, "1h08")
+    assert result["summary"]["distance"]["operation"] == "sum"
+    assert result["clarifications"] == []
+
+    for suffix, declaration, code in (
+        ("NEGATIVE-DISTANCE", "Course : −0km345 en 1h08.", "negative_measure"),
+        ("NEGATIVE-DURATION", "Course : 12km345 en -0h08.", "negative_duration"),
+    ):
+        entry = body(f"T07-COMPACT-{suffix}", declaration)
+        refused(db, port, entry, 400, code)
+        assert db.execute("SELECT body FROM journal_declaration WHERE entry_id=%s", (entry["entry_id"],)).fetchone() is None
+    print("PASS mesures compactes, sources littérales, horaires de départ, objectifs et alternatives ; POST/GET/SQL")
+
+
 def verify():
     with journal_db() as (_, db), java_service(db) as (port, python_port, logs):
         with running(uvicorn("app:app", "python", python_port), python_port, logs / "python.log"):
@@ -343,6 +408,7 @@ def verify():
             verify_distance_goals(db, port)
             verify_duration_alternatives(db, port)
             verify_measure_notation(db, port)
+            verify_compact_measures(db, port)
         with running(uvicorn("t07_faults:app", "scripts", python_port), python_port, logs / "faults.log"):
             verify_faults(db, port)
 

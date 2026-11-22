@@ -6,12 +6,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.regex.Pattern;
 
 record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Measure> measures) {
@@ -23,11 +21,20 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
 
     private static final String GROUP_SPACE = "[ \\u00a0\\u2009\\u202f]";
     // Read the whole numeric token before checking its grouping, even when a group is malformed.
-    private static final Pattern NUMBER = pattern("(?<![\\w.,+−-])([+−-]?[0-9]+(?:(?:[.,]|"
-            + GROUP_SPACE + "+)[0-9]+)*)");
+    private static final String NUMBER_START = "(?<![\\w.,+−-])";
+    private static final String INTEGER = "[+−-]?[0-9]+";
+    private static final String NUMBER_HEAD = NUMBER_START + "(" + INTEGER + "(?:(?:[.,]|" + GROUP_SPACE + "+)[0-9]+)*)";
+    private static final String COMPACT_DIGITS = "[.,:+−-]*\\d[\\w\\p{N}]*(?:[.,:+−-]\\d+)*";
+    // Consume malformed compact tokens too, so neither component becomes a standalone quantity.
+    private static final Pattern NUMBER = pattern(NUMBER_HEAD + "((?:km|h)" + COMPACT_DIGITS + ")?");
     private static final Pattern NUMBER_FORMAT = pattern("[+−-]?(?:[0-9]+|[0-9]{1,3}(?:"
             + GROUP_SPACE + "[0-9]{3})+)(?:[.,][0-9]+)?");
     private static final Pattern GROUP_SEPARATOR = pattern(GROUP_SPACE);
+    private static final String COMPACT_END = "(?![\\w\\p{N}]|[.,:+−-]\\d)";
+    private static final String COMPACT_DISTANCE = "km[0-9]{3}" + COMPACT_END;
+    private static final String COMPACT_DURATION = "h[0-5][0-9]" + COMPACT_END;
+    private static final Pattern COMPACT_UNIT = pattern("(?<meters>" + COMPACT_DISTANCE + ")|(?<minutes>" + COMPACT_DURATION + ")");
+    private static final Pattern INTEGER_FORMAT = pattern(INTEGER);
     private static final String COMPOUND_UNIT_COMPONENT =
             "(?:h|heures?|min|minutes?|s|secondes?|km|kilom[èe]tres?|m|m[èe]tres?|j|jours?|semaines?|mois|ans?)";
     private static final Pattern COMPOUND_UNIT_TAIL = pattern("\\s*[/⁄∕·⋅*^²³⁻]|\\s+par\\s+"
@@ -39,16 +46,25 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
     private static final Pattern NEGATED = pattern("\\b(?:pas|ni|au lieu de)\\s*$");
     private static final String METERS_SPELLING = "m[èe]tres?|m";
     private static final String KILOMETERS_SPELLING = "kilom[èe]tres?|km";
+    private static final String SECONDS_SPELLING = "secondes?|secs?|s";
+    private static final String MINUTES_SPELLING = "minutes?|mins?";
+    private static final String HOURS_SPELLING = "heures?|h";
     private static final String GOAL_UNIT = "(?:\\s*(?:" + METERS_SPELLING + "|" + KILOMETERS_SPELLING + ")\\b)";
     private static final String GOAL_LINK = "(?:\\s*,\\s*|\\s+)(?:et|ou|puis)\\s+";
-    private static final String GOAL_PART = NUMBER.pattern() + GOAL_UNIT + "?";
-    private static final String MEASURED_GOAL_PART = NUMBER.pattern() + GOAL_UNIT;
+    private static final String GOAL_PART = NUMBER_HEAD + "(?:km" + COMPACT_DIGITS + "|" + GOAL_UNIT + ")?";
+    private static final String MEASURED_GOAL_PART = "(?:" + NUMBER_START + INTEGER + COMPACT_DISTANCE
+            + "|" + NUMBER_HEAD + GOAL_UNIT + ")";
     private static final Pattern DISTANCE_GOAL = pattern(
             "\\b(?<reachedBefore>j['’]ai\\s+(?:bien\\s+)?atteint\\s+(?:mon\\s+|l['’]))?objectif(?:\\s+de)?\\s*:?\\s*"
                     + "(?<parts>" + GOAL_PART + "(?:" + GOAL_LINK + GOAL_PART + ")*+)"
                     + "(?<reachedAfter>\\s+(?:est\\s+)?atteint\\b(?!\\s*(?:\\?|ou\\s+non\\b)))?");
     private static final Pattern MEASURED_GOAL_PARTS =
             pattern(MEASURED_GOAL_PART + "(?:" + GOAL_LINK + MEASURED_GOAL_PART + ")*+");
+    private static final Pattern COMPACT_DURATION_CONTEXT = pattern("\\b(?:(?:en|pendant)\\s+|dur[ée]e\\s*:?\\s*)"
+            + "(?:" + NUMBER_HEAD + "(?:" + COMPACT_DURATION + "|\\s*(?:" + SECONDS_SPELLING + "|"
+            + MINUTES_SPELLING + "|" + HOURS_SPELLING + ")\\b)?" + GOAL_LINK + ")*+$");
+    private static final Pattern CLOCK_CONTEXT = pattern("\\b(?:d[ée]part|rendez[-\\s]+vous|rdv)\\b"
+            + "(?![^.,;!?\\n]*\\b(?:puis|mais)\\b)[^.,;!?\\n]*$");
     private static final Pattern ADDITIVE = pattern("\\s*,?\\s*(?:puis|et)\\s*");
     private static final Pattern ALTERNATIVE = pattern("\\s+ou\\s+");
     private static final Pattern PER_SET = pattern("\\s+de\\s+");
@@ -61,9 +77,9 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
     private static final Map<String, Integer> TIME_IN_SECONDS = Map.of("s", 1, "min", 60, "h", 3600);
 
     private enum Unit {
-        SECONDS(DURATION, "s", "secondes?|secs?|s"),
-        MINUTES(DURATION, "min", "minutes?|mins?"),
-        HOURS(DURATION, "h", "heures?|h"),
+        SECONDS(DURATION, "s", SECONDS_SPELLING),
+        MINUTES(DURATION, "min", MINUTES_SPELLING),
+        HOURS(DURATION, "h", HOURS_SPELLING),
         METERS(DISTANCE, "m", METERS_SPELLING),
         KILOMETERS(DISTANCE, "km", KILOMETERS_SPELLING),
         SET_COUNT(SETS, "count", "s[ée]ries?"),
@@ -81,7 +97,8 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
         }
     }
 
-    private record WrittenNumber(String number, int start, int end, Unit unit, String label) {}
+    private record WrittenNumber(String number, int start, int end, Unit unit, String label, BigDecimal compactValue) {}
+    private record GoalPart(int start, int end) {}
     record Measure(String field, BigDecimal value, String unit, int start, int end) {}
 
     static final class InvalidDeclaration extends IllegalArgumentException {
@@ -114,10 +131,13 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
                 field = sharedDuration[i] ? DURATION : unresolvedField(text.substring(0, number.start));
             }
             if (field == null) continue;
-            String written = number.number;
-            if (!NUMBER_FORMAT.matcher(written).matches()) throw new InvalidDeclaration("invalid_measure_number");
-            String normalized = GROUP_SEPARATOR.matcher(written).replaceAll("").replace(',', '.').replace('−', '-');
-            BigDecimal value = new BigDecimal(normalized);
+            BigDecimal value = number.compactValue;
+            if (value == null) {
+                String written = number.number;
+                if (!NUMBER_FORMAT.matcher(written).matches()) throw new InvalidDeclaration("invalid_measure_number");
+                String normalized = GROUP_SEPARATOR.matcher(written).replaceAll("").replace(',', '.').replace('−', '-');
+                value = new BigDecimal(normalized);
+            }
             if (value.signum() < 0) {
                 throw new InvalidDeclaration(DURATION.equals(field) ? "negative_duration" : "negative_measure");
             }
@@ -131,12 +151,30 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
 
     private static List<WrittenNumber> writtenNumbers(String text) {
         List<WrittenNumber> numbers = new ArrayList<>();
-        var unmeasuredGoals = unmeasuredGoalStarts(text);
+        var unmeasuredGoals = unmeasuredGoalParts(text);
         var number = NUMBER.matcher(text);
         while (number.find()) {
             String prefix = text.substring(0, number.start());
             if (NEGATED.matcher(prefix).find()) continue;
             int end = number.end();
+            String written = number.group(1);
+            String label = labelledField(prefix);
+            int start = number.start();
+            boolean withinGoal = unmeasuredGoals.stream().anyMatch(goal -> goal.start <= start && start < goal.end);
+            if (number.group(2) != null) {
+                var compact = COMPACT_UNIT.matcher(text).region(number.end(1), end);
+                if (!compact.matches() || !INTEGER_FORMAT.matcher(written).matches()) continue;
+                if (COMPOUND_UNIT_TAIL.matcher(text).region(end, text.length()).lookingAt()) continue;
+                boolean distance = compact.group("meters") != null;
+                if (distance ? withinGoal : !compactDurationContext(prefix, unmeasuredGoals)) continue;
+                Unit unit = distance ? Unit.METERS : Unit.MINUTES;
+                String remainder = compact.group().substring(distance ? 2 : 1);
+                var whole = new BigDecimal(written.replace('−', '-'));
+                var magnitude = whole.abs().multiply(BigDecimal.valueOf(distance ? 1000 : 60)).add(new BigDecimal(remainder));
+                var value = written.startsWith("-") || written.startsWith("−") ? magnitude.negate() : magnitude;
+                numbers.add(new WrittenNumber(written, start, end, unit, label, value));
+                continue;
+            }
             Unit unit = null;
             for (var candidate : Unit.values()) {
                 var matcher = candidate.spelling.matcher(text).region(end, text.length());
@@ -147,14 +185,21 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
                 }
             }
             if (unit != null && COMPOUND_UNIT_TAIL.matcher(text).region(end, text.length()).lookingAt()) continue;
-            if (unit != null && DISTANCE.equals(unit.field) && unmeasuredGoals.contains(number.start())) continue;
-            numbers.add(new WrittenNumber(number.group(1), number.start(), end, unit, labelledField(prefix)));
+            if (unit != null && DISTANCE.equals(unit.field) && withinGoal) continue;
+            numbers.add(new WrittenNumber(written, start, end, unit, label, null));
         }
         return numbers;
     }
 
-    private static Set<Integer> unmeasuredGoalStarts(String text) {
-        Set<Integer> starts = new HashSet<>();
+    private static boolean compactDurationContext(String prefix, List<GoalPart> unmeasuredGoals) {
+        var elapsed = COMPACT_DURATION_CONTEXT.matcher(prefix);
+        if (!elapsed.find() || CLOCK_CONTEXT.matcher(prefix).region(0, elapsed.start()).find()) return false;
+        return unmeasuredGoals.stream().noneMatch(goal -> goal.end < elapsed.start()
+                && WHITESPACE.matcher(prefix).region(goal.end, elapsed.start()).matches());
+    }
+
+    private static List<GoalPart> unmeasuredGoalParts(String text) {
+        List<GoalPart> parts = new ArrayList<>();
         var goal = DISTANCE_GOAL.matcher(text);
         while (goal.find()) {
             int start = goal.start("parts");
@@ -162,10 +207,9 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
             boolean reached = goal.group("reachedBefore") != null || goal.group("reachedAfter") != null;
             // Keep the group together when an option lacks an explicit unit.
             if (reached && MEASURED_GOAL_PARTS.matcher(text).region(start, end).matches()) continue;
-            var number = NUMBER.matcher(text).region(start, end);
-            while (number.find()) starts.add(number.start());
+            parts.add(new GoalPart(start, end));
         }
-        return starts;
+        return parts;
     }
 
     private static boolean[] sharedDurationParts(String text, List<WrittenNumber> numbers) {

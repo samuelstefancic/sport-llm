@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import FastAPI, Header, Response
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "contracts" / "examples"
+COMPACT_FAULTS = ("COMPACT-OMITTED", "COMPACT-TRUNCATED-SOURCE", "COMPACT-WRONG-SOURCE")
 app = FastAPI()
 
 
@@ -24,6 +25,17 @@ def proposal(entry):
         ])
         return payload
     distance, duration = mention["measures"]
+    if entry["entry_id"] in {f"T07-{suffix}" for suffix in COMPACT_FAULTS}:
+        distance.update(value=12345, unit="m", source={**source, "text": "12km345"})
+        duration.update(value=68, unit="min", source={**source, "text": "1h08"})
+        match entry["entry_id"]:
+            case "T07-COMPACT-OMITTED":
+                mention["measures"].remove(duration)
+            case "T07-COMPACT-TRUNCATED-SOURCE":
+                distance["source"]["text"] = "12km"
+            case "T07-COMPACT-WRONG-SOURCE":
+                duration["source"]["input_revision"] += 1
+        return payload
     distance["source"] = {**source, "text": "5 km"}
     duration["source"] = {**source, "text": "30 min"}
     match entry["entry_id"]:
