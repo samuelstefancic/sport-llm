@@ -13,6 +13,7 @@ import stat
 import time
 from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
+from itertools import chain
 from pathlib import Path
 from typing import Literal
 
@@ -187,9 +188,22 @@ def status():
 
 
 
+def positioned_passages(text):
+    separators = ((match.start(), match.end()) for match in PASSAGE_DELIMITERS.finditer(text))
+    passages = {}
+    start = 0
+    for end, next_start in chain(separators, [(len(text), len(text))]):
+        part = text[start:end]
+        quote = part.strip()
+        if quote:
+            offset = start + len(part) - len(part.lstrip())
+            passages[f"p{len(passages) + 1}"] = (offset, quote)
+        start = next_start
+    return passages
+
+
 def passages_for(text):
-    parts = (part.strip() for part in PASSAGE_DELIMITERS.split(text))
-    return {f"p{index}": part for index, part in enumerate(filter(None, parts), 1)}
+    return {identifier: quote for identifier, (_, quote) in positioned_passages(text).items()}
 
 
 def passage_schema(passages):
@@ -245,6 +259,7 @@ def validate_extraction(raw, text, done_reason, passages=None):
     )
     if not checks["structure"]:
         return checks, [f"Forme attendue : un objet « mentions » avec les champs {source_key}, state et quantity."], rows
+    positions = positioned_passages(text) if passages is not None else {}
     cursor = 0
     checks["citations"] = True
     if applicable and len(mentions) != len(F10_ANCHORS):
@@ -253,17 +268,26 @@ def validate_extraction(raw, text, done_reason, passages=None):
         passage_id = mention[source_key] if passages is not None else None
         quote = mention["text"] if passages is None else passages.get(passage_id)
         quantity = mention["quantity"]
-        start = -1 if quote is None else text.find(quote, cursor)
-        reasons = []
-        if start < 0:
-            reasons.append("Passage inconnu." if quote is None else "Citation contiguë verbatim, ordonnée et sans chevauchement introuvable.")
-            checks["citations"] = False
+        if passages is None:
+            start = text.find(quote, cursor)
         else:
+            start, original = positions.get(passage_id, (-1, None))
+            if original != quote:
+                start = -1
+        valid_citation = start >= cursor
+        reasons = []
+        if valid_citation:
             cursor = start + len(quote)
+        else:
+            if passages is None:
+                reasons.append("Citation contiguë verbatim, ordonnée et sans chevauchement introuvable.")
+            else:
+                reasons.append("Passage inconnu." if start < 0 else "Passage hors ordre ou réutilisé.")
+            checks["citations"] = False
         anchor_ok, quantity_ok, state_ok = None, None, None
         anchor = F10_ANCHORS[index] if applicable and index < len(F10_ANCHORS) else None
         if anchor:
-            anchor_ok = start >= 0 and anchor in quote
+            anchor_ok = valid_citation and anchor in quote
             quantity_ok = quantity == {"value": 100, "unit": "g"}
             state_ok = mention["state"] == "cooked"
             if not anchor_ok:
@@ -278,7 +302,7 @@ def validate_extraction(raw, text, done_reason, passages=None):
             "passage_id": passage_id, "quote": quote, "state": mention["state"],
             "value": str(quantity["value"]) if quantity is not None else None,
             "unit": quantity["unit"] if quantity is not None else None,
-            "verbatim": start >= 0, "anchor_ok": anchor_ok, "quantity_ok": quantity_ok, "state_ok": state_ok,
+            "verbatim": valid_citation, "anchor_ok": anchor_ok, "quantity_ok": quantity_ok, "state_ok": state_ok,
             "expected_food": ("riz", "poulet")[index] if anchor else None,
             "reasons": reasons,
         })

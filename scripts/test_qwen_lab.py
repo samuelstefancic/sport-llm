@@ -95,6 +95,27 @@ class ExtractionTests(unittest.TestCase):
         self.assertFalse(checks["citations"])
 
 
+    def test_identical_passages_require_the_original_id_order_without_reuse(self):
+        text = "riz 100 g ; riz 100 g"
+        passages = lab.passages_for(text)
+        self.assertEqual(passages, {"p1": "riz 100 g", "p2": "riz 100 g"})
+        examples = [
+            (("p2", "p1"), False),
+            (("p1", "p1"), False),
+            (("p1", "p2"), True),
+        ]
+        for identifiers, valid in examples:
+            with self.subTest(identifiers=identifiers):
+                raw = native(*({"passage_id": identifier, "state": "unknown", "quantity": None}
+                               for identifier in identifiers))
+                checks, _, rows = assess(raw, text=text, passages=passages)
+                self.assertTrue(checks["structure"])
+                self.assertEqual([row["passage_id"] for row in rows], list(identifiers))
+                self.assertEqual([row["quote"] for row in rows], ["riz 100 g"] * 2)
+                self.assertEqual(checks["citations"], valid)
+                self.assertEqual([row["verbatim"] for row in rows], [True, valid])
+
+
 async def request(app, operation, method="POST", body=b"{}", host="127.0.0.1:8214", token=TOKEN,
                   origin=None, content_type="application/json", query=b"", details=False):
     headers = [(b"host", host.encode()), (b"content-type", content_type.encode())]

@@ -168,7 +168,8 @@ class Store:
                 fd = os.open(filename, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=folder)
                 with os.fdopen(fd, "rb") as source:
                     metadata = os.fstat(source.fileno())
-                    if not regular_file(metadata) or metadata.st_size > maximum:
+                    # Un remplacement atomique peut délier l’instantané déjà ouvert.
+                    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink > 1 or metadata.st_size > maximum:
                         raise ValueError("Unexpected file")
                     raw = source.read(maximum + 1)
             if len(raw) > maximum:
@@ -348,8 +349,9 @@ def install_sets(app, authorized, project: Path, port):
     @app.get("/internal/qwen/series/{identifier}", include_in_schema=False)
     async def series(request: Request, identifier: str):
         async def fetch():
+            was_running = identifier in running
             receipt = await run_in_threadpool(store.read, "series", identifier)
-            if receipt.get("status") == "running" and identifier not in running:
+            if receipt.get("status") == "running" and not was_running and identifier not in running:
                 receipt["status"] = "interrupted"
             return receipt
         return await guarded(request, fetch)
@@ -378,15 +380,17 @@ def install_sets(app, authorized, project: Path, port):
                            "game": game_data, "settings": arguments.model_dump(exclude={"game_id"}), "lab": lab,
                            "expected_sha256": [expected_digest(case["expected"]) for case in game_data["cases"]],
                            "status": "running", "started_at": utcnow(), "finished_at": None, "results": []}
-                await run_in_threadpool(store.write, "series", identifier, receipt)
                 running.add(identifier)
-                worker_lease = lease.pop_all()
-                worker = Thread(target=background, args=(worker_lease, receipt), daemon=True)
                 try:
-                    worker.start()
-                except RuntimeError:
-                    worker_lease.close()
+                    await run_in_threadpool(store.write, "series", identifier, receipt)
+                    worker_lease = lease.pop_all()
+                    try:
+                        Thread(target=background, args=(worker_lease, receipt), daemon=True).start()
+                    except RuntimeError:
+                        worker_lease.close()
+                        raise LabError("qwen_backend_unavailable", 503) from None
+                except BaseException:
                     running.discard(identifier)
-                    raise LabError("qwen_backend_unavailable", 503) from None
+                    raise
             return {"id": identifier, "path": store.path("series", identifier)}
         return await guarded(request, start)

@@ -135,6 +135,23 @@ class FileTests(unittest.TestCase):
         self.assertCountEqual(outcomes, ["saved", "qwen_storage_full"])
         self.assertEqual(len(self.store.index("jeux")), 1)
 
+    def test_open_receipt_remains_readable_after_atomic_replacement(self):
+        identifier = "20261122-150000-1234567890ab"
+        original = {"schema_version": sets.SCHEMA, "id": identifier, "status": "running", "results": []}
+        updated = original | {"status": "completed"}
+        self.store.write("series", identifier, original)
+        original_fstat = os.fstat
+
+        def replace_before_stat(fd):
+            self.store.write("series", identifier, updated)
+            metadata = original_fstat(fd)
+            self.assertEqual(metadata.st_nlink, 0)
+            return metadata
+
+        with patch.object(sets.os, "fstat", side_effect=replace_before_stat):
+            self.assertEqual(self.store.read("series", identifier), original)
+        self.assertEqual(self.store.read("series", identifier), updated)
+
     def test_failed_replacement_keeps_previous_game(self):
         self.store.write("jeux", "jeu", fixture_game())
         with patch.object(sets.os, "replace", side_effect=OSError):
@@ -220,7 +237,9 @@ class SeriesTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 finish.set()
             for _ in range(100):
-                reading = (await self.http("series/" + identifier))[1]
+                read_status, reading = await self.http("series/" + identifier)
+                self.assertEqual(read_status, 200, reading)
+                self.assertIn(reading["status"], ("running", "completed"))
                 if reading["status"] == "completed":
                     break
                 await asyncio.sleep(.01)
