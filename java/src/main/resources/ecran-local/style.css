@@ -271,3 +271,85 @@ thead th { color: var(--muted); font-size: .75rem; white-space: nowrap; }
   .timeline time { display: block; margin-bottom: .22rem; }
   .site-footer { flex-direction: column; }
 }
+
+.qwen-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.qwen-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  gap: .85rem;
+  margin-block: .8rem 1.05rem;
+}
+.qwen-fields input, .qwen-fields select {
+  width: 100%;
+  padding: .5rem .6rem;
+  border: 1px solid #c8d2c8;
+  border-radius: 8px;
+  background: #fbfcf8;
+  color: inherit;
+  font: inherit;
+}
+.qwen-fields :focus-visible, .qwen-history summary:focus-visible {
+  outline: 3px solid #3a7c59;
+  outline-offset: 3px;
+}
+.qwen-prompt-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .6rem;
+}
+#qwen-text { min-height: 80px; }
+.qwen-server > p, .qwen-server > button { margin-top: .85rem; }
+.qwen-definitions {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: .35rem .8rem;
+}
+.qwen-definitions dt { color: var(--muted); }
+.qwen-definitions dd { margin: 0; overflow-wrap: anywhere; }
+.qwen-attempts { margin-top: 28px; }
+.qwen-attempts > p { margin-top: .65rem; }
+.qwen-history { list-style: none; padding: 0; display: grid; gap: .65rem; margin-bottom: 0; }
+.qwen-history summary { cursor: pointer; font-weight: 650; }
+.qwen-history summary + * { margin-top: .85rem; }
+.qwen-history details details { margin-top: .85rem; }
+.qwen-source-and-mentions {
+  margin-top: .85rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 1rem;
+}
+.qwen-declaration { white-space: pre-wrap; overflow-wrap: anywhere; }
+.qwen-mention-list { padding-left: 1.35rem; margin: .4rem 0 0; }
+.qwen-mention-list li { padding-block: .35rem; overflow-wrap: anywhere; }
+.qwen-pre {
+  padding: .72rem;
+  max-height: 20rem;
+  overflow: auto;
+  background: var(--tint);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.qwen-history .qwen-definitions, .qwen-export { margin-top: .85rem; }
+
+@media (max-width: 780px) {
+  .qwen-layout, .qwen-source-and-mentions { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 480px) {
+  nav { gap: .6rem; }
+  nav a { text-align: center; line-height: 1.2; }
+  .qwen-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qwen-fields > :first-child { grid-column: 1 / -1; }
+}
+
+@media (max-width: 400px) {
+  .masthead { flex-wrap: wrap; padding-top: .5rem; }
+  nav { width: 100%; min-height: 38px; gap: .9rem; }
+}

@@ -1,4 +1,5 @@
 import { showTracking, watchLiveTracking } from "./suivi.js";
+import { openQwenLab } from "./qwen.js";
 
 const example = "Sortie à vélo : objectif 10 km, mais j’ai parcouru 4,5 km.";
 const activityLabels = { cycling: "Vélo", running: "Course", mobility: "Mobilité", squat: "Squat" };
@@ -67,15 +68,17 @@ function message(id, text, error = false) {
 }
 
 function route() {
-  const tracking = window.location.hash === "#suivi";
-  document.querySelector("#journal").hidden = tracking;
-  document.querySelector("#suivi").hidden = !tracking;
+  const sections = ["journal", "suivi", "laboratoire-qwen"];
+  const hash = window.location.hash.slice(1);
+  const active = sections.includes(hash) ? hash : "journal";
+  for (const section of sections) document.getElementById(section).hidden = section !== active;
   for (const link of document.querySelectorAll("nav a")) {
-    if (link.hash === (tracking ? "#suivi" : "#journal")) link.setAttribute("aria-current", "page");
+    if (link.hash === "#" + active) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
-  watchLiveTracking(tracking);
-  if (tracking) showTracking();
+  watchLiveTracking(active === "suivi");
+  if (active === "suivi") showTracking();
+  if (active === "laboratoire-qwen") openQwenLab();
 }
 
 function usableNumber(value) {

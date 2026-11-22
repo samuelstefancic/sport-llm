@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 import logging
+import os
 import re
 from typing import Annotated, Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -22,6 +23,12 @@ class ProposalInput(BaseModel):
 
 
 app = FastAPI()
+screen_port = os.environ.get("LLMSPORT_QWEN_SCREEN_PORT")
+screen_token = os.environ.get("LLMSPORT_QWEN_TOKEN")
+if screen_port in ("8114", "8214") and screen_token and re.fullmatch(r"[0-9a-f]{64}", screen_token):
+    from qwen_lab import install
+
+    install(app, int(screen_port), screen_token.encode("ascii"))
 logger = logging.getLogger("uvicorn.error")
 
 # Virgule décimale française dans « 12,5 g » ou séparateur entre deux aliments.

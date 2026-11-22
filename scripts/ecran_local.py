@@ -190,15 +190,19 @@ class Instance:
                                                 "-c", f"listen_addresses={HOST}", "-c", "unix_socket_directories="])
             self.ready("postgres", postgres, self.check_database)
             self.initialize_schema()
+            screen_env = dict(os.environ, LLMSPORT_QWEN_TOKEN=secrets.token_hex(32))
+            python_env = dict(screen_env, LLMSPORT_QWEN_SCREEN_PORT=str(self.python))
             python = self.launch("python", [sys.executable, "-B", "-m", "uvicorn", "app:app", "--host", HOST,
-                                            "--port", self.python, "--app-dir", ROOT / "python", "--no-access-log"])
+                                            "--port", self.python, "--app-dir", ROOT / "python", "--no-access-log"],
+                                 env=python_env)
             self.ready("python", python, lambda: self.get(f"http://{HOST}:{self.python}/openapi.json"))
             java = self.launch("java", [shutil.which("java"), "-jar", self.jar, f"--server.port={self.web}",
                                        f"--server.address={HOST}", "--spring.profiles.active=ecran-local",
                                        f"--ecran.worktree={ROOT}", f"--ecran.trial={str(self.trial).lower()}",
                                        f"--python.base-url=http://{HOST}:{self.python}",
                                        f"--journal.jdbc.url=jdbc:postgresql://{HOST}:{self.postgres}/postgres",
-                                       f"--journal.db.user={USER}", f"--spring.config.import=configtree:{self.config}/"])
+                                       f"--journal.db.user={USER}", f"--spring.config.import=configtree:{self.config}/"],
+                               env=screen_env)
             self.ready("java", java, lambda: self.get(f"{self.url}/workouts"))
             args = ["--essai"] if self.trial else []
             snapshot = tracking.snapshot

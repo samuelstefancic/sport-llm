@@ -33,6 +33,37 @@ Dans **Journal**, charger l’exemple vélo puis choisir **Analyser et enregistr
 
 Dans **Suivi**, les décisions et les repères proviennent de [suivi-local.json](documentation/suivi-local.json). Les archives historiques sont facultatives. Le profil cherche les pièces qu’il autorise dans les arborescences voisines prévues. Une pièce absente s’affiche comme indisponible.
 
+### Laboratoire Qwen
+
+Le profil `ecran-local` ouvre [Laboratoire Qwen](http://127.0.0.1:8113/#laboratoire-qwen). L’instance d’essai utilise [127.0.0.1:8213](http://127.0.0.1:8213/#laboratoire-qwen). Depuis un checkout qui contient ce lot et avec les outils configurés ci-dessus, utiliser :
+
+```sh
+./scripts/ecran-local --essai restart
+./scripts/ecran-local --essai status
+./scripts/ecran-local restart
+```
+
+**Actualiser** lit l’installation et la résidence de `qwen3:4b` sur le serveur Ollama déjà disponible à `127.0.0.1:11434`. **Charger le modèle** demande deux minutes de résidence. **Lancer** peut aussi charger le modèle. Le laboratoire utilise uniquement ce modèle installé. L’ouverture de l’onglet consulte l’état. Le démarrage d’Ollama et l’installation du modèle relèvent de l’opérateur. [API Ollama](https://docs.ollama.com/faq#how-can-i-preload-a-model-into-ollama-to-get-faster-response-times)
+
+Pour comparer les trois modes, charger **F10 · rév. 2** puis conserver la température à 0 et le plafond à 256 jetons. Chaque mode permet d’éditer sa consigne :
+
+- **Référence pré-T11** reprend la consigne du banc avec le domaine repas.
+- **Variante repas et citations** restreint les instructions à l’extraction alimentaire et conserve les citations libres.
+- **Sélection de passages** propose des identifiants de fragments délimités par la ponctuation forte. Les virgules et points décimaux restent dans les fragments. Python recopie à l’identique un fragment existant pour chaque identifiant rendu. Les quantités, unités et états restent proposés par Qwen.
+
+Sur le texte fictif exact de la [révision F10](data/dev/cases.json), le contrôle indépendant vérifie l’ordre, les citations contiguës verbatim, les quantités et l’état. Pour le riz, la citation doit inclure le rejet des 150 g. Pour le poulet, elle doit inclure le maintien de 100 g. Toute modification du texte rend cet oracle inapplicable. L’historique garde trois essais dans la mémoire de l’onglet jusqu’au rechargement. Le laboratoire affiche les sorties brutes et les raisons de verdict. **Télécharger l’essai JSON** enregistre explicitement un essai depuis le navigateur. Le fichier contient aussi le modèle, son empreinte et la version Ollama lorsqu’elles sont connues. Le laboratoire n’écrit aucune déclaration, consigne ou sortie dans le journal et ne sauvegarde automatiquement aucun essai.
+
+Les deux instances passent par le FastAPI du journal sur 8114 ou 8214. Un verrou commun au checkout sérialise les chargements et les essais de ces deux instances. Les autres clients d’Ollama sont hors de son périmètre. Le corps JSON est limité à 24 Kio, avec 4 Kio de déclaration et 8 Kio de consigne encodées en UTF-8. Le contexte Ollama est de 2 048 jetons. Une entrée longue peut dépasser la fenêtre du modèle. La sortie est limitée à 512 jetons et la réponse HTTP d’Ollama à 128 Kio. Le délai d’un appel de chargement ou de génération à Ollama est de 60 secondes. Au-delà, le laboratoire ferme la connexion locale.
+
+La latence murale mesure l’appel HTTP de FastAPI à Ollama. Le temps Ollama, les compteurs de jetons et le temps de génération viennent de sa réponse. Le débit divise les jetons générés par le temps de génération Ollama. Le pic RSS est le maximum échantillonné toutes les 250 ms environ pour le serveur Ollama qui écoute sur le port 11434 et ses descendants. En cas d’identité incertaine ou de relevé absent, le pic est inconnu. Ce RSS peut compter plusieurs fois des pages partagées, manquer un pic bref et ne fournit aucune occupation GPU distincte. Le PID est identifié avec `/usr/sbin/lsof` et `/bin/ps` quand ces outils fournissent une identité fiable. [Mesures de l’API Ollama](https://docs.ollama.com/api/chat)
+
+Vérifier les garde-fous et l’oracle avec le Python existant. Ces tests simulent Ollama :
+
+```sh
+"$LLMSPORT_PYTHON" -B scripts/test_qwen_lab.py -v
+mvn -o -f java/pom.xml -DskipTests package
+```
+
 ### Suivi en direct
 
 L’onglet **Suivi** affiche les fiches en cours, les douze dernières fiches terminées et le dernier relevé mémoire. Une fiche réunit l’objectif, le responsable, le critère de fin, l’estimation initiale datée, le temps mural, les jetons par session, le RSS échantillonné et les preuves locales inscrites. Le temps mural augmente depuis le début déclaré et se fixe à la fin déclarée. L’écart indique le temps sous la borne basse ou au-delà de la borne haute de l’estimation initiale. À l’intérieur de la fourchette, l’écart vaut zéro.

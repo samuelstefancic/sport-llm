@@ -16,6 +16,7 @@
       <nav aria-label="Navigation principale">
         <a href="#journal" aria-current="page">Journal</a>
         <a href="#suivi">Suivi</a>
+        <a href="#laboratoire-qwen">Laboratoire Qwen</a>
       </nav>
     </div>
   </header>
@@ -84,6 +85,73 @@
       <div id="tracking-content" aria-live="polite">
         <p class="panel muted">Chargement du suivi…</p>
       </div>
+    </section>
+    <section id="laboratoire-qwen" aria-labelledby="qwen-title" hidden>
+      <div class="intro">
+        <div>
+          <h1 id="qwen-title">Laboratoire Qwen</h1>
+          <p>Comparez les extractions d’un repas avec un modèle Ollama local. Les trois derniers essais restent en mémoire dans cet onglet.</p>
+        </div>
+      </div>
+      <div class="qwen-layout">
+        <section class="panel" aria-labelledby="qwen-input-title">
+          <div class="panel-head">
+            <h2 id="qwen-input-title">Préparer un essai</h2>
+            <button id="qwen-example" type="button" class="text-button" disabled>Charger F10 · rév. 2</button>
+          </div>
+          <form id="qwen-form" autocomplete="off">
+            <label for="qwen-text">Déclaration de repas</label>
+            <textarea id="qwen-text" rows="3" maxlength="4096" required></textarea>
+            <div class="qwen-fields">
+              <div>
+                <label for="qwen-mode">Mode</label>
+                <select id="qwen-mode">
+                  <option value="reference">Référence pré-T11</option>
+                  <option value="citations">Variante repas et citations</option>
+                  <option value="passages">Sélection de passages</option>
+                </select>
+              </div>
+              <div>
+                <label for="qwen-temperature">Température</label>
+                <input id="qwen-temperature" type="number" min="0" max="1" step="0.01" value="0" required>
+              </div>
+              <div>
+                <label for="qwen-tokens">Plafond de jetons</label>
+                <input id="qwen-tokens" type="number" min="1" max="512" step="1" value="256" required>
+              </div>
+            </div>
+            <div class="qwen-prompt-label">
+              <label for="qwen-prompt">Consigne envoyée au modèle</label>
+              <button id="qwen-reset-prompt" type="button" class="text-button" disabled>Rétablir la consigne</button>
+            </div>
+            <textarea id="qwen-prompt" rows="6" maxlength="8192" required spellcheck="false"></textarea>
+            <p id="qwen-oracle-hint" class="source-note"></p>
+            <div class="actions">
+              <button id="qwen-run" class="button primary" type="submit" disabled>Lancer</button>
+            </div>
+          </form>
+        </section>
+        <aside class="panel qwen-server" aria-labelledby="qwen-server-title">
+          <div class="panel-head">
+            <h2 id="qwen-server-title">Modèle local</h2>
+            <button id="qwen-refresh" type="button" class="text-button">Actualiser</button>
+          </div>
+          <dl id="qwen-server-status" class="qwen-definitions">
+            <dt>Modèle</dt><dd>qwen3:4b</dd>
+            <dt>Adresse</dt><dd>127.0.0.1:11434</dd>
+            <dt>Installation</dt><dd>Inconnue</dd>
+            <dt>Résidence</dt><dd>Inconnue</dd>
+          </dl>
+          <p class="source-note">Charger demande à Ollama de mettre le modèle en mémoire pour deux minutes. Lancer peut aussi le charger.</p>
+          <button id="qwen-load" class="button secondary" type="button" disabled>Charger le modèle</button>
+          <p class="feedback" id="qwen-feedback" role="status" aria-live="polite"></p>
+        </aside>
+      </div>
+      <section class="qwen-attempts" aria-labelledby="qwen-attempts-title">
+        <h2 id="qwen-attempts-title">Historique des essais</h2>
+        <p class="muted" id="qwen-empty">Lancez un essai pour voir les citations, le verdict et les mesures.</p>
+        <ol id="qwen-history" class="qwen-history"></ol>
+      </section>
     </section>
   </main>
   <footer class="site-footer">
