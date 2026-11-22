@@ -63,7 +63,7 @@ class LocalScreenController {
         return asset("index.html", "text/html; charset=UTF-8");
     }
 
-    @GetMapping({"/ecran/style.css", "/ecran/journal.js", "/ecran/suivi.js"})
+    @GetMapping({"/ecran/style.css", "/ecran/journal.js", "/ecran/suivi.js", "/ecran/qwen.js"})
     ResponseEntity<Resource> staticFile(HttpServletRequest request) {
         String file = Path.of(request.getServletPath()).getFileName().toString();
         return asset(file, file.endsWith(".css") ? "text/css; charset=UTF-8" : "text/javascript; charset=UTF-8");
