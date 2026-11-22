@@ -256,7 +256,7 @@ def main():
                                help="Autoriser ce dossier d’orchestration, au chemin exact")
             scope.add_argument("--sans-suivi-orchestration", dest="orchestration", action="store_const", const="",
                                help="Retirer le dossier d’orchestration du périmètre")
-    add_commands(actions.add_parser("suivi", help="Déclarer, rattacher une session, clore ou relire une tâche"))
+    add_commands(actions.add_parser("suivi", help="Déclarer, enrichir, rattacher une session, clore ou relire une tâche"))
     args = parser.parse_args()
     os.umask(0o077)
     instance = Instance(args.essai)

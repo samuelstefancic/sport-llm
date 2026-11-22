@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Profile("ecran-local")
 @RestController
@@ -40,10 +41,12 @@ class LocalScreenController {
             Map.entry("vs1-recu", VS1 + "livraison.json"),
             Map.entry("vs1-fusion", VS1 + "fusion.json"),
             Map.entry("vs1-comparaison", VS1 + "t10-fusion-16e27c42-comparaison.json"));
+    private static final Pattern LOT_EVIDENCE_ID = Pattern.compile("[a-z0-9][a-z0-9-]{0,63}");
     private static final String POLICY = "default-src 'self'; object-src 'none'; base-uri 'none'; "
             + "frame-ancestors 'none'; form-action 'self'";
     private final Path worktree;
     private final Path liveSnapshot;
+    private final Path lotEvidenceDirectory;
     private final JournalStore store;
 
     LocalScreenController(@Value("${ecran.worktree}") String worktree,
@@ -51,6 +54,7 @@ class LocalScreenController {
         this.worktree = Path.of(worktree).toRealPath();
         this.liveSnapshot = this.worktree.resolve(trial ? ".local/ecran-essai" : ".local/ecran")
                 .resolve("suivi-direct/affichage.json");
+        this.lotEvidenceDirectory = this.worktree.resolve(".local/preuves-lots");
         this.store = store;
     }
 
@@ -97,6 +101,12 @@ class LocalScreenController {
         String relative = EVIDENCE.get(id);
         if (relative == null) return ResponseEntity.notFound().build();
         return localFile(worktree.getParent().resolve(relative), "text/plain; charset=UTF-8");
+    }
+
+    @GetMapping("/ecran/preuves-lots/{id}")
+    ResponseEntity<Resource> lotEvidence(@PathVariable String id) {
+        if (!LOT_EVIDENCE_ID.matcher(id).matches()) return ResponseEntity.notFound().build();
+        return localFile(lotEvidenceDirectory.resolve(id + ".json"), "text/plain; charset=UTF-8");
     }
 
     @GetMapping("/workouts")

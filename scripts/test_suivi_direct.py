@@ -1,5 +1,8 @@
 """Oracles du suivi avec des événements et des mesures intégralement fictifs."""
 
+from argparse import ArgumentParser
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 import json
 from pathlib import Path
 import sqlite3
@@ -9,7 +12,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from suivi_direct import SCHEMA, Tracking, declaration, rss, session_view, task_view
+from suivi_direct import SCHEMA, Tracking, add_commands, declaration, rss, session_view, task_view
 from suivi_tokens import COUNTERS, ProjectScope, Reader, git_worktrees, timestamp
 
 
@@ -321,6 +324,75 @@ class SuiviTest(unittest.TestCase):
         args.maximum = None
         with self.assertRaisesRegex(ValueError, "ordre"):
             declaration(args, at(5))
+
+    def test_enrich_open_and_closed_legacy_cards(self):
+        instance = self.root / "instance"
+        instance.mkdir()
+        tracking = Tracking(instance, self.root, trial=True)
+        db = sqlite3.connect(tracking.db_path)
+        with db:
+            db.executescript(SCHEMA)
+            db.execute("DROP TABLE task_details")
+            db.execute("DROP TABLE task_evidence")
+            db.execute("INSERT INTO tracking_scope VALUES (1, 2, NULL)")
+            db.execute("INSERT INTO tasks VALUES ('ancien', ?, NULL, NULL, NULL, NULL)", (at(1),))
+            db.execute("INSERT INTO samples VALUES (?, 0, NULL, 4, 1)", (at(5),))
+        db.close()
+        parser = ArgumentParser()
+        add_commands(parser)
+
+        def run(*arguments):
+            with redirect_stdout(StringIO()):
+                tracking.command(parser.parse_args(arguments))
+            return json.loads(tracking.snapshot.read_text(encoding="utf-8"))
+
+        with patch("suivi_direct.now", return_value=at(20)):
+            legacy = run("declarer", "autre", "--debut", at(10), "--objectif", "Essai autonome",
+                         "--responsable", "Rôle fictif", "--critere-fin", "Critère fictif",
+                         "--preuve", "inference-f10-4b", "--preuve", "lot-futur-03")
+            other, original = legacy["active_tasks"]
+            self.assertEqual((other["id"], other["objective"], other["owner"], other["completion_criterion"]),
+                             ("autre", "Essai autonome", "Rôle fictif", "Critère fictif"))
+            self.assertEqual(other["evidence_ids"], ["inference-f10-4b", "lot-futur-03"])
+            self.assertEqual((original["id"], original["objective"], original["owner"],
+                              original["completion_criterion"], original["estimate"]),
+                             ("ancien", None, None, None, None))
+            self.assertEqual(original["evidence_ids"], [])
+
+            args = ("--objectif", "Lot fictif", "--responsable", "  Équipe témoin  ", "--critere-fin", "Contrôle fictif",
+                    "--estime-le", at(0), "--min", "0", "--max", "2", "--preuve", "workflow-8113")
+            open_card = run("enrichir", "ancien", *args)["active_tasks"][1]
+            self.assertEqual(run("enrichir", "ancien", *args)["active_tasks"][1], open_card)
+            self.assertEqual(open_card["started_at"], at(1))
+            self.assertEqual(open_card["elapsed_seconds"], 19)
+            self.assertEqual(open_card["estimate"], {"estimated_at": at(0), "min_minutes": 0, "max_minutes": 2})
+            self.assertEqual(open_card["estimate_gap_seconds"], 0)
+            self.assertEqual((open_card["memory"]["java"], open_card["memory"]["python"]), (0, None))
+            self.assertEqual(open_card["owner"], "Équipe témoin")
+            self.assertEqual(open_card["evidence_ids"], ["workflow-8113"])
+
+            with self.assertRaisesRegex(ValueError, "autre estimation"):
+                run("enrichir", "ancien", "--estime-le", at(0), "--min", "1", "--max", "2",
+                    "--objectif", "Modification rejetée")
+            for invalid in ("https://example.invalid/", "../voisin", ".local/recu", "recu.json", "x" * 65, "clé"):
+                with self.subTest(invalid=invalid), redirect_stderr(StringIO()), self.assertRaises(SystemExit):
+                    parser.parse_args(("enrichir", "ancien", "--preuve", invalid))
+            closed = run("finir", "ancien", "--fin", at(15))["history"][0]
+
+        with patch("suivi_direct.now", return_value=at(40)):
+            replay = run("enrichir", "ancien", "--preuve", "workflow-8113")["history"][0]
+            self.assertEqual(replay, closed)
+            self.assertEqual(replay["status"], "termine")
+            self.assertEqual(replay["elapsed_seconds"], 14)
+            self.assertEqual(replay["objective"], "Lot fictif")
+            updated = run("enrichir", "ancien", "--critere-fin", "Critère précisé")["history"][0]
+            self.assertEqual(updated, {**closed, "completion_criterion": "Critère précisé"})
+            report = StringIO()
+            with redirect_stdout(report):
+                tracking.command(parser.parse_args(("historique", "ancien")))
+            self.assertEqual(json.loads(report.getvalue()), {
+                **updated, "memory_samples": updated["recent_memory_samples"],
+            })
 
 
 if __name__ == "__main__":

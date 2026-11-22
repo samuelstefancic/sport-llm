@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT,
   estimated_at TEXT, min_minutes INTEGER, max_minutes INTEGER
 );
+CREATE TABLE IF NOT EXISTS task_details (
+  task_id TEXT PRIMARY KEY, objective TEXT, owner TEXT, completion_criterion TEXT
+);
+CREATE TABLE IF NOT EXISTS task_evidence (
+  task_id TEXT NOT NULL, evidence_id TEXT NOT NULL, PRIMARY KEY (task_id, evidence_id)
+);
 CREATE TABLE IF NOT EXISTS sessions (
   task_id TEXT NOT NULL, id TEXT NOT NULL, role TEXT NOT NULL, number INTEGER NOT NULL,
   PRIMARY KEY (task_id, id)
@@ -63,14 +69,28 @@ def seconds(started, ended):
     return max(0, (datetime.fromisoformat(ended) - datetime.fromisoformat(started)).total_seconds())
 
 
+def nonempty_text(value):
+    if not value.strip():
+        raise ValueError("Le texte doit être renseigné.")
+    return value.strip()
+
+
 def add_commands(parser):
     commands = parser.add_subparsers(dest="suivi_action", required=True)
     declare = commands.add_parser("declarer", help="Ouvrir une tâche avec ses bornes initiales")
     declare.add_argument("id")
     declare.add_argument("--debut", help="Début réel attesté, au format ISO 8601 avec fuseau")
-    declare.add_argument("--estime-le", help="Date de l’estimation initiale, avec fuseau")
-    declare.add_argument("--min", type=int, dest="minimum", help="Borne basse en minutes")
-    declare.add_argument("--max", type=int, dest="maximum", help="Borne haute en minutes")
+    enrich = commands.add_parser("enrichir", help="Renseigner une fiche existante")
+    enrich.add_argument("id")
+    for command in (declare, enrich):
+        command.add_argument("--estime-le", help="Date de l’estimation initiale, avec fuseau")
+        command.add_argument("--min", type=int, dest="minimum", help="Borne basse en minutes")
+        command.add_argument("--max", type=int, dest="maximum", help="Borne haute en minutes")
+        command.add_argument("--objectif", type=nonempty_text, help="Objectif du lot")
+        command.add_argument("--responsable", type=nonempty_text, help="Responsable du lot")
+        command.add_argument("--critere-fin", type=nonempty_text, help="Critère de fin du lot")
+        command.add_argument("--preuve", action="append", type=valid_id, default=[],
+                             help="ID d’un reçu local (1 à 64 caractères a-z, 0-9 ou tiret, répétable)")
     session = commands.add_parser("session", help="Inscrire une session Codex locale de llmSport")
     session.add_argument("id")
     session.add_argument("uuid")
@@ -84,16 +104,20 @@ def add_commands(parser):
 
 def declaration(args, at):
     started = timestamp(args.debut) if args.debut else at
-    estimated = timestamp(args.estime_le) if args.estime_le else None
-    minimum, maximum = args.minimum, args.maximum
     if started > at:
         raise ValueError("Le début doit être passé ou présent.")
+    return started, *initial_estimate(args, started)
+
+
+def initial_estimate(args, started):
+    estimated = timestamp(args.estime_le) if args.estime_le else None
+    minimum, maximum = args.minimum, args.maximum
     if (estimated, minimum, maximum) != (None, None, None):
         if estimated is None or minimum is None or maximum is None or not 0 <= minimum <= maximum <= 10**7:
             raise ValueError("L’estimation exige --estime-le, --min et --max dans l’ordre croissant.")
         if estimated > started:
             raise ValueError("L’estimation initiale doit être datée au plus tard au début.")
-    return started, estimated, minimum, maximum
+    return estimated, minimum, maximum
 
 
 def valid_id(identifier):
@@ -232,6 +256,8 @@ class Tracking:
                 declare_task(db, args, identifier, at, task)
             elif task is None:
                 raise ValueError("Tâche inconnue.")
+            elif args.suivi_action == "enrichir":
+                enrich_task(db, args, task)
             elif args.suivi_action == "session":
                 register_session(db, args, task)
             elif args.suivi_action == "finir":
@@ -247,9 +273,37 @@ def declare_task(db, args, identifier, at, task):
         before = tuple(task[key] for key in ("started_at", "estimated_at", "min_minutes", "max_minutes"))
         if before != (started, estimated, minimum, maximum):
             raise ValueError("Cet identifiant possède déjà d’autres bornes.")
-        return
-    db.execute("INSERT INTO tasks VALUES (?, ?, NULL, ?, ?, ?)",
-               (identifier, started, estimated, minimum, maximum))
+    else:
+        db.execute("INSERT INTO tasks VALUES (?, ?, NULL, ?, ?, ?)",
+                   (identifier, started, estimated, minimum, maximum))
+    save_details(db, args, identifier)
+
+
+def enrich_task(db, args, task):
+    estimate = initial_estimate(args, task["started_at"])
+    if estimate[0] is not None:
+        if task["estimated_at"] is None:
+            db.execute("UPDATE tasks SET estimated_at=?, min_minutes=?, max_minutes=? WHERE id=?",
+                       (*estimate, task["id"]))
+        elif estimate != (task["estimated_at"], task["min_minutes"], task["max_minutes"]):
+            raise ValueError("La tâche possède déjà une autre estimation initiale.")
+    save_details(db, args, task["id"])
+
+
+def save_details(db, args, identifier):
+    details = (args.objectif, args.responsable, args.critere_fin)
+    if any(value is not None for value in details):
+        db.execute("""
+            INSERT INTO task_details (task_id, objective, owner, completion_criterion) VALUES (?, ?, ?, ?)
+            ON CONFLICT(task_id) DO UPDATE SET
+                objective=COALESCE(excluded.objective, objective),
+                owner=COALESCE(excluded.owner, owner),
+                completion_criterion=COALESCE(excluded.completion_criterion, completion_criterion)
+        """, (identifier, *details))
+    db.executemany("""
+        INSERT INTO task_evidence (task_id, evidence_id) VALUES (?, ?)
+        ON CONFLICT(task_id, evidence_id) DO NOTHING
+    """, ((identifier, evidence) for evidence in args.preuve))
 
 
 def register_session(db, args, task):
@@ -358,8 +412,18 @@ def task_view(db, task, at, include_samples=False):
         SELECT MIN(at) AS first_at, MAX(at) AS last_at, COUNT(*) AS count, MAX(java) AS java,
                MAX(python) AS python, MAX(postgres) AS postgres FROM samples WHERE at BETWEEN ? AND ?
     """, (started, ended)).fetchone()
+    details = db.execute("""
+        SELECT objective, owner, completion_criterion FROM task_details WHERE task_id=?
+    """, (task["id"],)).fetchone()
+    evidence_ids = [identifier for (identifier,) in db.execute("""
+        SELECT evidence_id FROM task_evidence WHERE task_id=? ORDER BY evidence_id
+    """, (task["id"],))]
     view = {
         "id": task["id"], "status": "termine" if finished else "actif",
+        "objective": details["objective"] if details else None,
+        "owner": details["owner"] if details else None,
+        "completion_criterion": details["completion_criterion"] if details else None,
+        "evidence_ids": evidence_ids,
         "started_at": started, "finished_at": finished, "elapsed_seconds": elapsed,
         "estimate": estimate, "estimate_gap_seconds": gap,
         "sessions": [session_view(db, session, started, ended, include_samples) for session in sessions(db, task)],

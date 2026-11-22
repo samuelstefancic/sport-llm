@@ -35,18 +35,26 @@ Dans **Suivi**, les décisions et les repères proviennent de [suivi-local.json]
 
 ### Suivi en direct
 
-L’onglet **Suivi** affiche les tâches en cours, les douze dernières tâches terminées et le dernier relevé mémoire. Le temps mural augmente depuis le début déclaré et se fixe à la fin déclarée. L’écart indique le temps sous la borne basse ou au-delà de la borne haute de l’estimation initiale. À l’intérieur de la fourchette, l’écart vaut zéro.
+L’onglet **Suivi** affiche les fiches en cours, les douze dernières fiches terminées et le dernier relevé mémoire. Une fiche réunit l’objectif, le responsable, le critère de fin, l’estimation initiale datée, le temps mural, les jetons par session, le RSS échantillonné et les preuves locales inscrites. Le temps mural augmente depuis le début déclaré et se fixe à la fin déclarée. L’écart indique le temps sous la borne basse ou au-delà de la borne haute de l’estimation initiale. À l’intérieur de la fourchette, l’écart vaut zéro.
 
 ```sh
-./scripts/ecran-local suivi declarer livraison-locale
+./scripts/ecran-local suivi declarer livraison-locale \
+  --objectif "Vérifier l’écran local" --responsable "Équipe locale" \
+  --critere-fin "Contrôles d’essai relus" \
+  --debut 2026-11-22T09:00:00+01:00 --estime-le 2026-11-22T08:55:00+01:00 --min 25 --max 45
 ./scripts/ecran-local suivi session livraison-locale UUID-CODEX --role principal
 ./scripts/ecran-local suivi session livraison-locale UUID-DU-SOUS-AGENT --role sous-agent
+./scripts/ecran-local suivi enrichir livraison-locale --preuve workflow-8113
 ./scripts/ecran-local suivi finir livraison-locale
 ./scripts/ecran-local suivi historique
 ./scripts/ecran-local suivi historique livraison-locale
 ```
 
 Remplacer les UUID d’exemple par ceux des sessions llmSport à mesurer. Le rôle `demandeur` est disponible pour une session distincte. Sans estimation, l’écran indique « Estimation initiale inconnue ». Pour consigner des dates attestées, utiliser `declarer ID --debut DATE --estime-le DATE --min 25 --max 45` et `finir ID --fin DATE`, avec des dates ISO 8601 munies d’un fuseau. Ces commandes peuvent précéder le démarrage du collecteur. La date d’estimation est antérieure ou égale au début réel. Répéter la commande `suivi session` avec le même rôle relit la source dans les fenêtres inscrites, par exemple lorsqu’un fichier redevient disponible après la clôture.
+
+`suivi enrichir ID` applique les options renseignées à une fiche existante, ouverte ou terminée. Les options `--objectif`, `--responsable` et `--critere-fin` peuvent être utilisées séparément. Les trois options d’estimation peuvent compléter une estimation encore inconnue si la date initiale est attestée. Une estimation enregistrée est immuable. Les anciennes fiches conservent leurs mesures et affichent les champs descriptifs manquants comme non renseignés.
+
+`--preuve ID` ajoute un identifiant de reçu à la fiche. L’option est répétable et dédupliquée. L’identifiant compte de 1 à 64 caractères ASCII, commence par une lettre minuscule ou un chiffre, et peut ensuite contenir aussi des tirets. Chaque route `/ecran/preuves-lots/ID` lit le fichier régulier canonique `.local/preuves-lots/ID.json` à la racine du worktree de l’écran. Par exemple, `--preuve workflow-8113` lie `.local/preuves-lots/workflow-8113.json`. On peut ajouter les reçus de nouveaux lots sans modifier le code ni redémarrer l’écran. Les reçus sont servis en texte brut. Une pièce absente ou un lien symbolique est indisponible.
 
 Le dépôt de l’écran et ses worktrees déclarés par Git définissent le périmètre des répertoires de travail. Pour rattacher aussi les sessions ouvertes dans un dossier d’orchestration, fournir son chemin absolu à `start` ou `restart`.
 
@@ -58,7 +66,7 @@ L’option autorise ce dossier précis. Ses sous-dossiers doivent appartenir à 
 
 - **Mémoire.** Le collecteur relève toutes les cinq secondes le RSS en Kio de Spring Boot, de FastAPI et du processus parent PostgreSQL. Il vérifie les signatures de démarrage des PIDs dans le registre du lanceur. L’écran convertit les valeurs en Mio. La pression système vient de `kern.memorystatus_vm_pressure_level` quand le système donne accès à cette mesure (1 normale, 2 avertissement, 4 critique). Le relevé est affiché en retard après 15 secondes. Le pic par service correspond au maximum des relevés disponibles entre le début et la fin de la tâche ou l’heure courante. L’écran affiche la période effectivement échantillonnée et les cinq derniers relevés par tâche. Un pic entre deux relevés peut échapper à la collecte. Les archives Qwen restent dans les sections du banc et de la sonde.
 - **Jetons.** Le collecteur ouvre le JSONL de chaque UUID inscrit, sous `$CODEX_HOME` ou `~/.codex`. Il vérifie l’identité de la session et le répertoire de travail déclaré dans ses métadonnées et dans le contexte de chaque tour. Les événements hors périmètre servent seulement à suivre le cumul avant un retour au projet. Les incréments de cumuls sont dédupliqués et attribués selon l’horodatage d’émission inclus dans la fenêtre. Un appel émis dans la fenêtre peut avoir débuté avant sa borne. Les totaux affichés viennent de la source, avec le cache inclus dans l’entrée et le raisonnement inclus dans la sortie quand les compteurs documentent ces sous-totaux. Une absence de mesure s’affiche comme indisponible. Toutes les sessions ont leur propre ligne. Des fenêtres qui se recouvrent peuvent contenir le même relevé et se lisent individuellement. Après la clôture, une grâce de dix secondes permet de rattraper un flush tardif, dans les bornes déjà déclarées. Le curseur et le rejeu restent limités aux sessions inscrites.
-- **Lecture.** Le stockage SQLite privé, les curseurs de lecture et l’agrégat d’affichage se trouvent sous `.local/ecran/suivi-direct`. `suivi historique ID` relit tous les échantillons disponibles de la fenêtre. Le point d’accès [Suivi en direct](http://127.0.0.1:8113/api/local/suivi/direct) accepte une requête GET sans paramètres et restitue un agrégat JSON de schéma versionné, avec `rss_unit`, `postgres_scope`, `active_tasks`, `history` et `latest_sample`. Les horodatages JSON sont en UTC. Les dates de l’écran sont en heure de Paris.
+- **Lecture.** Le stockage SQLite privé, les curseurs de lecture et l’agrégat d’affichage se trouvent sous `.local/ecran/suivi-direct`. `suivi historique ID` relit tous les échantillons disponibles de la fenêtre. Le point d’accès [Suivi en direct](http://127.0.0.1:8113/api/local/suivi/direct) accepte une requête GET sans paramètres et restitue un agrégat JSON de schéma versionné, avec `rss_unit`, `postgres_scope`, `active_tasks`, `history` et `latest_sample`. Chaque fiche inclut `objective`, `owner` et `completion_criterion`, à `null` si inconnus, et le tableau `evidence_ids`. Les horodatages JSON sont en UTC. Les dates de l’écran sont en heure de Paris.
 
 ## Vérifier l’écran dans une instance séparée
 

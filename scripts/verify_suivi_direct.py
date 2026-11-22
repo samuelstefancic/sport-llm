@@ -43,8 +43,11 @@ def main():
     request("POST", ENDPOINT, expected=405)
     request("HEAD", ENDPOINT, expected=405)
     request("GET", ENDPOINT + "/historique.sqlite3", expected=404)
+    request("GET", "/ecran/preuves-lots/affichage.json", expected=404)
+    request("GET", "/ecran/preuves-lots/" + "a" * 65, expected=404)
 
     identifier = f"essai-{uuid4().hex[:10]}"
+    request("GET", f"/ecran/preuves-lots/{identifier}", expected=404)
     session_id = str(uuid4())
     current = datetime.now(timezone.utc)
     started = timestamp((current - timedelta(seconds=8)).isoformat())
@@ -71,6 +74,20 @@ def main():
     )
 
     command("suivi", "declarer", identifier, "--debut", started, "--estime-le", started, "--min", "25", "--max", "45")
+    legacy = find(read(ENDPOINT), "active_tasks", identifier)
+    assert (legacy["objective"], legacy["owner"], legacy["completion_criterion"], legacy["evidence_ids"]) == (
+        None, None, None, [],
+    )
+    descriptions = {
+        "objective": "Vérifier la collecte fictive.",
+        "owner": "Rôle fictif",
+        "completion_criterion": "Historique relu après redémarrage.",
+        "evidence_ids": [identifier],
+    }
+    command("suivi", "enrichir", identifier,
+            "--objectif", descriptions["objective"], "--responsable", descriptions["owner"],
+            "--critere-fin", descriptions["completion_criterion"], "--preuve", identifier)
+    command("suivi", "enrichir", identifier, "--preuve", "https://example.invalid/", expected=2)
     command("suivi", "session", identifier, session_id, "--role", "principal")
 
     def observed(data):
@@ -86,6 +103,7 @@ def main():
         assert task["sessions"][0]["models"] == ["gpt-fixture"]
         assert task["sessions"][0]["tokens"]["total_tokens"] == 12
         assert task["sessions"][0]["turns_completed"] == 1
+        assert {key: task[key] for key in descriptions} == descriptions
         return task
 
     active = eventually(observed)
@@ -100,6 +118,7 @@ def main():
     command("suivi", "finir", identifier)
     closed = find(read(ENDPOINT), "history", identifier)
     assert closed["finished_at"] and closed["status"] == "termine"
+    assert {key: closed[key] for key in descriptions} == descriptions
     assert not find(read(ENDPOINT), "active_tasks", identifier)
     saved = json.loads(command("suivi", "historique", identifier))
     assert saved["elapsed_seconds"] == closed["elapsed_seconds"]
@@ -110,7 +129,7 @@ def main():
     ))
     assert replayed["elapsed_seconds"] == closed["elapsed_seconds"]
     assert replayed["sessions"][0]["snapshots"] == 1
-    print("OK redémarrage, horloge de clôture, historique et rattrapage borné sans doublon.")
+    print("OK fiche enrichie, preuve fermée, redémarrage, clôture, historique et rattrapage sans doublon.")
 
 
 if __name__ == "__main__":

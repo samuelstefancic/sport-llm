@@ -2,6 +2,7 @@ const dataKeys = new Set([
   "t10-mesures", "t10-manifeste", "banc-mesures", "banc-memoire", "sonde-mesures",
   "sonde-manifeste", "vs1-recu", "vs1-comparaison",
 ]);
+const lotEvidenceId = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const number = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 3 });
 const memory = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
 const calendar = new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "UTC" });
@@ -95,22 +96,27 @@ function sourceHref(key) {
   return `/ecran/preuves/${encodeURIComponent(key)}`;
 }
 
-function evidenceLinks(keys, tracking, sources) {
+function lotEvidenceHref(key) {
+  return `/ecran/preuves-lots/${encodeURIComponent(key)}`;
+}
+
+function evidenceLinks(keys, labels, sources, href = sourceHref) {
   const list = node("ul", undefined, "evidence-list");
   for (const key of keys) {
     const item = node("li");
-    const label = tracking.preuves[key];
-    if (sources[key]?.available) item.append(link(label, sourceHref(key)));
+    const label = labels?.[key] ?? `Reçu · ${key}`;
+    if (sources[key]?.available) item.append(link(label, href(key)));
     else item.append(node("span", `${label} · source indisponible`, "muted"));
     list.append(item);
   }
   return list;
 }
 
-async function loadEvidence(key) {
+async function loadEvidence(url, isData = false) {
   try {
-    const isData = dataKeys.has(key);
-    const response = await fetch(sourceHref(key), { method: isData ? "GET" : "HEAD", cache: "no-store" });
+    const response = await fetch(url, {
+      method: isData ? "GET" : "HEAD", cache: "no-store", signal: AbortSignal.timeout(4000),
+    });
     if (response.ok) return { available: true, data: isData ? await response.json() : null };
   } catch {
     // Unavailable sources stay visible with their status in the list.
@@ -150,7 +156,7 @@ function addBench(tracking, sources) {
   table(section, "Qualité, latence et mémoire par moteur",
     ["Moteur / révision", "Statut", "Cas stables", "Exacts", "F10", "1er appel", "P50 chaud", "P95 chaud", "Pic RSS", "Empreinte macOS"], rows);
   section.append(node("p", "La baseline appelle le gestionnaire Python directement. Les mesures Qwen incluent l’aller-retour HTTP local et comptent les réponses échouées. Le RSS est échantillonné pour Python avec le banc (2 mesures) et pour Ollama avec ses descendants (intervalle visé de 100 ms). L’empreinte macOS est échantillonnée séparément toutes les 250 ms pour Ollama. Les pics transitoires peuvent échapper aux deux mesures.", "source-note"));
-  section.append(evidenceLinks(["banc-protocole", "banc-mesures", "banc-memoire"], tracking, sources));
+  section.append(evidenceLinks(["banc-protocole", "banc-mesures", "banc-memoire"], tracking.preuves, sources));
   return section;
 }
 
@@ -197,7 +203,7 @@ function addT10(tracking, sources) {
   } else {
     section.append(node("p", "Résultat de livraison VS1 indisponible."));
   }
-  section.append(evidenceLinks(["t10-mesures", "t10-manifeste", "vs1-comparaison", "vs1-recu"], tracking, sources));
+  section.append(evidenceLinks(["t10-mesures", "t10-manifeste", "vs1-comparaison", "vs1-recu"], tracking.preuves, sources));
   return section;
 }
 
@@ -221,7 +227,7 @@ function addProbe(tracking, sources) {
     format(run.median_ms, "ms"),
   ]));
   section.append(node("p", `Pic d’empreinte échantillonné de la sonde ${inMio(probe.peak_sampled_process_footprint_bytes, 1024 ** 2)}. Le protocole principal et le parcours HTTP du journal mesurent d’autres populations.`, "source-note"));
-  section.append(evidenceLinks(["sonde-mesures", "sonde-manifeste"], tracking, sources));
+  section.append(evidenceLinks(["sonde-mesures", "sonde-manifeste"], tracking.preuves, sources));
   return section;
 }
 
@@ -231,7 +237,7 @@ function timeline(tracking, sources) {
   for (const event of tracking.reperes) {
     const row = node("li", undefined, "event");
     const body = node("div");
-    body.append(node("h3", event.titre), node("p", event.texte), evidenceLinks(event.preuves, tracking, sources));
+    body.append(node("h3", event.titre), node("p", event.texte), evidenceLinks(event.preuves, tracking.preuves, sources));
     row.append(time(event.date), body);
     list.append(row);
   }
@@ -259,7 +265,8 @@ export async function showTracking() {
     content.replaceChildren(stack);
 
     const keys = Object.keys(tracking.preuves);
-    const sources = Object.fromEntries(await Promise.all(keys.map(async key => [key, await loadEvidence(key)])));
+    const sources = Object.fromEntries(await Promise.all(
+      keys.map(async key => [key, await loadEvidence(sourceHref(key), dataKeys.has(key))])));
     stack.replaceChildren(decision, addT10(tracking, sources), addBench(tracking, sources), addProbe(tracking, sources), timeline(tracking, sources));
   } catch {
     content.replaceChildren(node("p", "Le suivi est indisponible. Rechargez l’écran pour réessayer.", "panel muted"));
@@ -371,11 +378,26 @@ function liveSessionRows(task) {
   });
 }
 
-function liveTaskDetails(task, openSamples) {
+function lotEvidenceIds(task) {
+  return (task.evidence_ids ?? []).filter(id => typeof id === "string" && lotEvidenceId.test(id));
+}
+
+function liveTaskDetails(task, openSamples, sources) {
   const block = node("article", undefined, "live-task");
   const title = node("h3", task.id);
   title.append(node("span", task.status === "actif" ? "En cours" : "Terminée", "pill live-state"));
   block.append(title);
+  const details = node("dl", undefined, "live-task-details");
+  for (const [label, value] of [
+    ["Objectif", task.objective],
+    ["Responsable", task.owner],
+    ["Critère de fin", task.completion_criterion],
+  ]) {
+    details.append(node("dt", label), node("dd", value ?? "Non renseigné", value == null ? "muted" : ""));
+  }
+  block.append(details);
+  const proofs = lotEvidenceIds(task);
+  if (proofs.length) block.append(evidenceLinks(proofs, null, sources, lotEvidenceHref));
   const clock = node("p", undefined, "live-clock");
   clock.dataset.liveClock = "";
   clock.dataset.start = task.started_at;
@@ -414,16 +436,17 @@ function liveTaskDetails(task, openSamples) {
   return block;
 }
 
-function renderLive(data) {
+function renderLive(data, sources) {
   const openSamples = new Set([...liveTasks.querySelectorAll("details[data-live-samples][open]")]
     .map(details => details.dataset.liveSamples));
   const historyOpen = liveTasks.querySelector(".live-tasks-history")?.open;
-  const blocks = data.active_tasks.map(task => liveTaskDetails(task, openSamples));
+  const blocks = data.active_tasks.map(task => liveTaskDetails(task, openSamples, sources));
   if (!blocks.length) blocks.push(node("p", "Aucune tâche en cours.", "muted"));
   if (data.history.length) {
     const history = node("details", undefined, "live-tasks-history");
     history.open = historyOpen ?? (data.active_tasks.length === 0);
-    history.append(node("summary", "Tâches terminées"), ...data.history.map(task => liveTaskDetails(task, openSamples)));
+    history.append(node("summary", "Tâches terminées"),
+      ...data.history.map(task => liveTaskDetails(task, openSamples, sources)));
     blocks.push(history);
   }
   liveTasks.replaceChildren(...blocks);
@@ -438,9 +461,12 @@ async function refreshLive() {
     if (!response.ok) throw new Error();
     const data = await response.json();
     if (data.schema_version !== 1) throw new Error();
+    const keys = new Set([...data.active_tasks, ...data.history].flatMap(lotEvidenceIds));
+    const sources = Object.fromEntries(await Promise.all(
+      [...keys].map(async key => [key, await loadEvidence(lotEvidenceHref(key))])));
     liveData = data;
     liveNetworkError = false;
-    renderLive(data);
+    renderLive(data, sources);
   } catch {
     liveNetworkError = true;
     if (!liveData) liveTasks.replaceChildren(node("p", "Aucun relevé du collecteur disponible.", "muted"));

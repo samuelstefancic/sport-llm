@@ -220,6 +220,9 @@ summary { cursor: pointer; color: var(--green-dark); font-size: .9rem; font-weig
 .decision-panel { background: #eaf1e7; border-color: #d5e2d4; }
 .live-tracking { margin-bottom: 18px; }
 .live-task { margin-top: 1rem; }
+.live-task-details { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .25rem .8rem; margin: .55rem 0 0; }
+.live-task-details dt { font-weight: 650; }
+.live-task-details dd { margin: 0; overflow-wrap: anywhere; }
 .live-state { margin-left: .6rem; vertical-align: middle; }
 .live-times, .live-tasks-history, .live-memory { margin-top: .6rem; }
 .live-clock { font-variant-numeric: tabular-nums; font-weight: 650; }
