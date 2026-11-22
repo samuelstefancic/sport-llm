@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0.0",
+  "name": "Mentions ordonnées de repas (cas fictifs)",
+  "cases": [
+    {
+      "name": "Deux aliments dans l’ordre déclaré",
+      "text": "J’ai mangé 140 g de lentilles cuites, puis des pêches.",
+      "expected": [
+        {
+          "anchor": "140 g de lentilles cuites",
+          "state": "cooked",
+          "quantity": {
+            "value": 140,
+            "unit": "g"
+          }
+        },
+        {
+          "anchor": "des pêches",
+          "state": "unknown",
+          "quantity": null
+        }
+      ]
+    },
+    {
+      "name": "Correction de la quantité et rejet de l’ancienne",
+      "text": "J’ai mangé des carottes crues, 60 g et non 80 g comme indiqué d’abord.",
+      "expected": [
+        {
+          "anchor": "carottes crues, 60 g et non 80 g",
+          "state": "raw",
+          "quantity": {
+            "value": 60,
+            "unit": "g"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aucun aliment consommé",
+      "text": "Au déjeuner, j’ai réchauffé mon repas, mais je ne l’ai pas mangé.",
+      "expected": []
+    }
+  ]
+}

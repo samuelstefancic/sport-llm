@@ -29,6 +29,10 @@ Une simulation de traces ne lance pas d’endpoint. Déclarer population et mét
 
 Manifeste figé, données brutes expurgées, synthèse et limites. Aucun résultat chiffré sans mesure. Recommandation de configuration, pas promotion automatique.
 
+Pour un essai depuis le laboratoire web, figer le jeu et l’attendu avant l’appel, puis relier la mesure au SHA du labo, au digest du modèle et aux paramètres réellement transmis. Pour une comparaison pédagogique, garder ces références et changer un facteur à la fois. Afficher séparément le contrôle de structure, la fidélité à la déclaration et le verdict métier. Conserver la réponse native du modèle même si le code recopie ensuite un passage exact.
+
+Dans ce parcours web, enregistrer le reçu sur action explicite dans le dossier local du projet et le relire depuis l’application. Relever les jetons et les durées natifs du moteur, le temps HTTP observé, et le périmètre, le nombre et l’intervalle des relevés de RAM. Consigner les essais incomplets et la raison de fin reçue.
+
 ## Contrôle de fin
 
 Aucun P99 présenté comme solide sur échantillon insuffisant ; frais fixes/retries inclus dans le périmètre économique déclaré ; ressources vérifiées après arrêt.
