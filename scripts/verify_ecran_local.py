@@ -1,5 +1,6 @@
 """Contrôle HTTP de l’écran exclusivement sur l’instance locale --essai."""
 
+import argparse
 from concurrent.futures import ThreadPoolExecutor
 from http.client import HTTPConnection
 import json
@@ -49,7 +50,7 @@ def find_entry(identifier, revision=1):
     raise AssertionError(f"Révision introuvable : {identifier} / {revision}")
 
 
-def check_screen_and_evidence():
+def check_screen_and_evidence(include_archives=True):
     page, media = request("GET", "/")
     assert "text/html" in media and "Journal sportif" in page and "Suivi du projet" in page
     assert "text/css" in request("GET", "/ecran/style.css")[1]
@@ -57,11 +58,14 @@ def check_screen_and_evidence():
     assert "text/javascript" in request("GET", "/ecran/suivi.js")[1]
     config = read("/ecran/suivi.json")
     assert "T11 reporté" in config["decision"]["titre"]
+    request("GET", "/ecran/preuves/fichier-inconnu?path=PROJECT.md", expected=404)
+    request("GET", "/ecran/preuves/PROJECT.md", expected=404)
+    if not include_archives:
+        print("OK écran, suivi et liste fermée")
+        return
     for key in config["preuves"]:
         _, media = request("HEAD", f"/ecran/preuves/{key}")
         assert "text/plain" in media
-    request("GET", "/ecran/preuves/fichier-inconnu?path=PROJECT.md", expected=404)
-    request("GET", "/ecran/preuves/PROJECT.md", expected=404)
     assert read("/ecran/preuves/t10-mesures")["accuracy"]["numerator"] == 22
     bench = read("/ecran/preuves/banc-mesures")
     assert len(bench["engines"]["baseline"]["stable_cases"]) == 16
@@ -112,5 +116,8 @@ def check_journal():
 
 
 if __name__ == "__main__":
-    check_screen_and_evidence()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--sans-archives", action="store_true", help="Vérifier l’écran sans les pièces historiques locales")
+    args = parser.parse_args()
+    check_screen_and_evidence(include_archives=not args.sans_archives)
     check_journal()

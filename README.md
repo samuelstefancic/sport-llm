@@ -2,7 +2,23 @@
 
 ## Écran local
 
-Depuis la racine du worktree, démarrer l’écran puis ouvrir [127.0.0.1:8113](http://127.0.0.1:8113/).
+Un checkout neuf peut démarrer l’écran avec les outils déjà présents sur la machine.
+
+- Python 3.11 au minimum, avec les dépendances de [python/requirements.txt](python/requirements.txt) (`fastapi`, `pydantic`, `uvicorn`) et de [catalog/requirements.txt](catalog/requirements.txt) (`psycopg[binary]`) déjà installées dans l’environnement choisi.
+- JDK 17 ou ultérieur et Maven, avec `java` et `mvn` sur le `PATH`. Le cache Maven doit déjà contenir les dépendances et plugins de [java/pom.xml](java/pom.xml) nécessaires à `mvn -o -f java/pom.xml -DskipTests package`.
+- PostgreSQL 17.12, la version vérifiée pour l’écran, avec `initdb` et `postgres` exécutables dans le même répertoire, et leurs bibliothèques et fichiers de support. Pour réutiliser un cluster existant, conserver sa version majeure.
+- Un système Unix avec `/bin/sh`, `dirname`, `ps` et les modules standard Python `fcntl` et `sqlite3`. Utiliser un compte non root avec accès en écriture au checkout et des ports libres pour l’instance choisie. Le collecteur utilise `sysctl` pour la pression mémoire si le système fournit cette mesure.
+
+Depuis la racine du checkout, adapter les deux chemins d’exemple puis garder les variables exportées dans le même terminal pour le démarrage, les vérifications et le redémarrage. Pour un venv, indiquer son propre `bin/python`. Le lanceur utilise les outils configurés et crée le cluster dédié au premier démarrage.
+
+```sh
+export LLMSPORT_PYTHON='/chemin/vers/mon venv/bin/python'
+export LLMSPORT_PG_BIN='/chemin/vers/postgresql/bin'
+```
+
+Chaque variable absente ou vide utilise son chemin de repli sous `LLMSPORT_T10_TOOLS` (`venv/bin/python` ou `postgres-17.12/bin`). Sans cette variable commune, le repli est `../github-t10/.local/t10`. Avec les deux chemins explicites, le checkout fonctionne indépendamment de cette arborescence.
+
+Démarrer l’écran puis ouvrir [127.0.0.1:8113](http://127.0.0.1:8113/).
 
 ```sh
 ./scripts/ecran-local start
@@ -11,11 +27,11 @@ Depuis la racine du worktree, démarrer l’écran puis ouvrir [127.0.0.1:8113](
 ./scripts/ecran-local stop
 ```
 
-Le lanceur utilise Java, le cache Maven en mode hors ligne, le venv et PostgreSQL 17.12 déjà présents dans `../github-t10/.local/t10`. Pour une autre installation locale de ces deux derniers outils, définir `LLMSPORT_T10_TOOLS`. Java, FastAPI et PostgreSQL écoutent sur `127.0.0.1`, respectivement sur les ports 8113, 8114 et 8115. Le répertoire `.local/ecran` conserve la base dédiée et les journaux de démarrage. L’arrêt et le redémarrage préservent cette base.
+Java, FastAPI et PostgreSQL écoutent sur `127.0.0.1`, respectivement sur les ports 8113, 8114 et 8115. Le répertoire `.local/ecran` conserve la base dédiée et les journaux de démarrage. L’arrêt et le redémarrage préservent cette base.
 
 Dans **Journal**, charger l’exemple vélo puis choisir **Analyser et enregistrer**. L’écran affiche 4,5 km déclarés, 4 500 m normalisés et la citation « 4,5 km ». L’historique relit les résultats par révision dans PostgreSQL. La latence HTTP mesure le POST jusqu’à réception du corps dans ce navigateur. Elle reste disponible à la relecture dans le même profil navigateur et s’affiche comme indisponible si aucune mesure locale n’existe.
 
-Dans **Suivi**, les décisions et les repères proviennent de [suivi-local.json](documentation/suivi-local.json). Les métriques sont lues dans les pièces locales autorisées par le profil de l’écran. Une pièce absente s’affiche comme indisponible.
+Dans **Suivi**, les décisions et les repères proviennent de [suivi-local.json](documentation/suivi-local.json). Les archives historiques sont facultatives. Le profil cherche les pièces qu’il autorise dans les arborescences voisines prévues. Une pièce absente s’affiche comme indisponible.
 
 ### Suivi en direct
 
@@ -38,12 +54,15 @@ Remplacer les UUID d’exemple par ceux des sessions llmSport à mesurer. Le rô
 
 ## Vérifier l’écran dans une instance séparée
 
+Avec les variables de l’exemple exportées, démarrer l’instance d’essai puis ouvrir [127.0.0.1:8213](http://127.0.0.1:8213/). En mode T10, utiliser le Python du venv T10 ou `python3` (3.11 minimum) pour les trois scripts de vérification.
+
 ```sh
-python3 -B scripts/test_suivi_direct.py
+"$LLMSPORT_PYTHON" -B scripts/test_suivi_direct.py
 ./scripts/ecran-local --essai start
-python3 -B scripts/verify_suivi_direct.py
-python3 -B scripts/verify_ecran_local.py
+./scripts/ecran-local --essai status
+"$LLMSPORT_PYTHON" -B scripts/verify_suivi_direct.py
+"$LLMSPORT_PYTHON" -B scripts/verify_ecran_local.py --sans-archives
 ./scripts/ecran-local --essai stop
 ```
 
-L’instance d’essai utilise les ports 8213 à 8215 et conserve ses entrées et sessions fictives dans `.local/ecran-essai`. Les contrôles couvrent le suivi direct et sa reprise, les pièces du suivi dans l’arborescence locale, le POST concurrent et le rejeu, ainsi que les révisions et leur persistance après redémarrage.
+L’instance d’essai utilise les ports 8213 à 8215 et conserve ses entrées et sessions fictives dans `.local/ecran-essai`. Les contrôles couvrent le suivi direct et sa reprise, le POST concurrent et le rejeu, ainsi que les révisions et leur persistance après redémarrage. Si les archives historiques sont présentes dans les arborescences attendues, exécuter `verify_ecran_local.py` sans option pour vérifier aussi leur contenu.

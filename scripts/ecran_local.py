@@ -23,7 +23,6 @@ from suivi_direct import SERVICES, Tracking, add_commands
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PG = Path(os.environ["LLMSPORT_T10_TOOLS"]).resolve() / "postgres-17.12/bin"
 HOST = "127.0.0.1"
 HTTP = build_opener(ProxyHandler({}))
 USER = "llmsport"
@@ -123,7 +122,7 @@ class Instance:
                 raise RuntimeError("Le port PostgreSQL ne répond pas depuis le cluster dédié.")
             return True
 
-    def init_database(self):
+    def init_database(self, initdb):
         self.config.mkdir(mode=0o700, exist_ok=True)
         if not self.password_path.exists():
             if self.data.exists():
@@ -136,7 +135,7 @@ class Instance:
                 raise RuntimeError(f"Initialisation incomplète. Répertoire préservé : {self.data}.")
             return
         env = {**os.environ, "LC_ALL": "C"}
-        subprocess.run([str(PG / "initdb"), "-D", str(self.data), "-U", USER, "--no-locale",
+        subprocess.run([str(initdb), "-D", str(self.data), "-U", USER, "--no-locale",
                         "--encoding=UTF8", "--auth-host=scram-sha-256", "--auth-local=reject",
                         f"--pwfile={self.password_path}"], env=env, check=True)
 
@@ -174,13 +173,16 @@ class Instance:
                     sock.bind((HOST, port))
                 except OSError as error:
                     raise RuntimeError(f"Port {HOST}:{port} indisponible.") from error
-        for binary in ("mvn", "java", PG / "initdb", PG / "postgres"):
+        pg_bin = Path(os.environ.get("LLMSPORT_PG_BIN") or
+                      Path(os.environ["LLMSPORT_T10_TOOLS"]) / "postgres-17.12/bin").resolve()
+        initdb, postgres_binary = pg_bin / "initdb", pg_bin / "postgres"
+        for binary in ("mvn", "java", initdb, postgres_binary):
             if not shutil.which(str(binary)):
                 raise RuntimeError(f"Outil local introuvable : {binary}")
         self.build()
-        self.init_database()
+        self.init_database(initdb)
         try:
-            postgres = self.launch("postgres", [PG / "postgres", "-D", self.data, "-p", self.postgres,
+            postgres = self.launch("postgres", [postgres_binary, "-D", self.data, "-p", self.postgres,
                                                 "-c", f"listen_addresses={HOST}", "-c", "unix_socket_directories="])
             self.ready("postgres", postgres, self.check_database)
             self.initialize_schema()
