@@ -96,7 +96,7 @@ class ExtractionTests(unittest.TestCase):
 
 
 async def request(app, operation, method="POST", body=b"{}", host="127.0.0.1:8214", token=TOKEN,
-                  origin=None, content_type="application/json", query=b""):
+                  origin=None, content_type="application/json", query=b"", details=False):
     headers = [(b"host", host.encode()), (b"content-type", content_type.encode())]
     if token is not None:
         headers.append((b"x-llmsport-qwen", token.encode()))
@@ -116,7 +116,11 @@ async def request(app, operation, method="POST", body=b"{}", host="127.0.0.1:821
         messages.append(message)
 
     await app(scope, receive, send)
-    return messages[0]["status"]
+    status = messages[0]["status"]
+    if details:
+        raw = b"".join(message.get("body", b"") for message in messages[1:])
+        return status, json.loads(raw) if raw else None
+    return status
 
 
 class BoundaryTests(unittest.TestCase):

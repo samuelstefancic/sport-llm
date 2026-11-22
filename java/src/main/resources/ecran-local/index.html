@@ -108,7 +108,8 @@
                 <select id="qwen-mode">
                   <option value="reference">Référence pré-T11</option>
                   <option value="citations">Variante repas et citations</option>
-                  <option value="passages">Sélection de passages</option>
+                  <option value="passages">Sélection de passages · JSON libre</option>
+                  <option value="passages_schema">Sélection de passages · JSON Schema</option>
                 </select>
               </div>
               <div>
@@ -147,6 +148,49 @@
           <p class="feedback" id="qwen-feedback" role="status" aria-live="polite"></p>
         </aside>
       </div>
+      <section class="panel qwen-attempts" aria-labelledby="qwen-game-title">
+        <h2 id="qwen-game-title">Jeux d’essai</h2>
+        <p class="source-note">Réservé aux déclarations fictives. Les jeux et les séries sont enregistrés sur demande dans le dossier local du projet <code id="qwen-game-directory">.local/qwen-lab/</code>.</p>
+        <div class="qwen-record-actions">
+          <label for="qwen-game-select">Jeu enregistré</label>
+          <select id="qwen-game-select"><option value="">Aucun jeu enregistré</option></select>
+          <button id="qwen-game-open" type="button" class="button secondary" disabled>Ouvrir</button>
+          <button id="qwen-game-new" type="button" class="text-button">Nouveau jeu</button>
+        </div>
+        <form id="qwen-game-form" autocomplete="off">
+          <div class="qwen-record-fields">
+            <div>
+              <label for="qwen-game-id">Identifiant du fichier</label>
+              <input id="qwen-game-id" type="text" maxlength="40" pattern="[a-z0-9](?:[a-z0-9\-]{0,38}[a-z0-9])?" placeholder="repas-corriges" required>
+            </div>
+            <div>
+              <label for="qwen-game-name">Nom du jeu</label>
+              <input id="qwen-game-name" type="text" maxlength="100" required>
+            </div>
+          </div>
+          <div id="qwen-game-cases" class="qwen-case-list"></div>
+          <div class="qwen-record-actions">
+            <button id="qwen-game-add-case" type="button" class="button secondary">Ajouter un cas</button>
+            <button id="qwen-game-add-f10" type="button" class="button secondary" disabled>Ajouter F10 · rév. 2</button>
+            <button id="qwen-game-save" type="submit" class="button primary">Enregistrer le jeu</button>
+            <a id="qwen-game-file" target="_blank" rel="noopener" hidden>Ouvrir le JSON du jeu</a>
+          </div>
+        </form>
+        <p class="source-note">La série reprend le jeu enregistré et fige la consigne, le mode, la température et le plafond indiqués dans « Préparer un essai ». Elle conserve un résultat après chaque cas.</p>
+        <button id="qwen-series-start" type="button" class="button primary" disabled>Lancer et enregistrer la série</button>
+        <p class="feedback" id="qwen-game-feedback" role="status" aria-live="polite"></p>
+      </section>
+      <section class="qwen-attempts" aria-labelledby="qwen-series-title">
+        <h2 id="qwen-series-title">Séries enregistrées</h2>
+        <div class="qwen-record-actions">
+          <label for="qwen-series-select">Identifiant de la série</label>
+          <select id="qwen-series-select"><option value="">Aucune série enregistrée</option></select>
+          <button id="qwen-series-open" type="button" class="button secondary" disabled>Ouvrir</button>
+          <a id="qwen-series-file" target="_blank" rel="noopener" hidden>Ouvrir le JSON de la série</a>
+        </div>
+        <p id="qwen-series-summary" class="feedback" role="status" aria-live="polite"></p>
+        <ol id="qwen-series-results" class="qwen-history"></ol>
+      </section>
       <section class="qwen-attempts" aria-labelledby="qwen-attempts-title">
         <h2 id="qwen-attempts-title">Historique des essais</h2>
         <p class="muted" id="qwen-empty">Lancez un essai pour voir les citations, le verdict et les mesures.</p>

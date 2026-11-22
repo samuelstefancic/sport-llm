@@ -9,7 +9,9 @@ import os
 import re
 import socket
 import threading
+import stat
 import time
+from contextlib import contextmanager
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Literal
@@ -54,18 +56,22 @@ Conserve les unités écrites et les zéros déclarés. Une virgule décimale da
 
 PASSAGE_PROMPT = """Extrais les aliments déclarés dans les passages numérotés. Réponds avec un seul objet JSON de forme {"mentions":[{"passage_id":"p1","state":"unknown","quantity":null}]}.
 Choisis l'identifiant d'un passage qui contient la déclaration complète pertinente pour chaque aliment. Garde l’ordre du texte. Utilise l’identifiant tel qu’il est fourni. L’état vaut "cooked", "raw" ou "unknown". La quantité est null si elle manque, sinon {"value":nombre,"unit":unité} avec une unité parmi "g", "kg", "ml", "l", "portion". Si une quantité est corrigée, prends la quantité retenue et sélectionne le passage qui conserve aussi le rejet de l’ancienne. Pour un aliment maintenu, sélectionne le passage qui l’indique. N’invente aucune mesure et ne convertis rien."""
-PROMPTS = {"reference": REFERENCE_PROMPT, "citations": CITATION_PROMPT, "passages": PASSAGE_PROMPT}
+PROMPTS = {"reference": REFERENCE_PROMPT, "citations": CITATION_PROMPT, "passages": PASSAGE_PROMPT,
+           "passages_schema": PASSAGE_PROMPT}
 PASSAGE_DELIMITERS = re.compile(r"[;!?\n]|(?<!\d)\.|\.(?!\d)")
 
 
-class RunInput(BaseModel):
+class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    mode: Literal["reference", "citations", "passages"]
-    text: str = Field(min_length=1, max_length=TEXT_BYTES)
+    mode: Literal["reference", "citations", "passages", "passages_schema"]
     prompt: str = Field(min_length=1, max_length=PROMPT_BYTES)
     temperature: float = Field(ge=0, le=1, allow_inf_nan=False)
     max_tokens: int = Field(ge=1, le=MAX_TOKENS)
+
+
+class RunInput(Settings):
+    text: str = Field(min_length=1, max_length=TEXT_BYTES)
 
 
 class LabError(Exception):
@@ -186,6 +192,22 @@ def passages_for(text):
     return {f"p{index}": part for index, part in enumerate(filter(None, parts), 1)}
 
 
+def passage_schema(passages):
+    def record(properties):
+        return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
+
+    quantity = record({
+        "value": {"type": "number", "minimum": 0},
+        "unit": {"type": "string", "enum": ["g", "kg", "ml", "l", "portion"]},
+    })
+    mention = record({
+        "passage_id": {"type": "string", "enum": list(passages)},
+        "state": {"type": "string", "enum": ["cooked", "raw", "unknown"]},
+        "quantity": {"anyOf": [{"type": "null"}, quantity]},
+    })
+    return record({"mentions": {"type": "array", "maxItems": 64, "items": mention}})
+
+
 def valid_mention(item, source_key):
     if not isinstance(item, dict) or set(item) != {source_key, "state", "quantity"}:
         return False
@@ -273,14 +295,15 @@ def counter(reply, key):
 
 
 def run_once(args):
-    passages = passages_for(args.text) if args.mode == "passages" else None
+    passages = passages_for(args.text) if args.mode in ("passages", "passages_schema") else None
     if passages is not None and (not passages or len(passages) > 40):
         raise LabError("invalid_passages", 400)
     source = f"Domaine : meal\nTexte : {args.text}"
     if passages is not None:
         source = "Domaine : meal\nPassages : " + json.dumps(passages, ensure_ascii=False)
     payload = {
-        "model": MODEL, "stream": False, "think": False, "format": "json", "keep_alive": KEEP_ALIVE,
+        "model": MODEL, "stream": False, "think": False, "keep_alive": KEEP_ALIVE,
+        "format": passage_schema(passages) if args.mode == "passages_schema" else "json",
         "messages": [
             {"role": "system", "content": args.prompt},
             {"role": "user", "content": source},
@@ -317,34 +340,59 @@ def run_once(args):
     }
 
 
-def perform(operation, data, lock_path):
+@contextmanager
+def action_lock(lock_path):
     try:
-        descriptor = os.open(lock_path, os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+        folder = os.open(lock_path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            descriptor = os.open(lock_path.name, os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                                 0o600, dir_fd=folder)
+        finally:
+            os.close(folder)
     except OSError:
         raise LabError("qwen_lock_unavailable", 503) from None
-    with os.fdopen(descriptor, "wb") as lock:
+    try:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                raise OSError("Expected a regular lock file")
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise LabError("qwen_busy", 409) from None
         except OSError:
             raise LabError("qwen_lock_unavailable", 503) from None
-        installed = model_entry("/api/tags")
-        if installed is None:
-            raise LabError("qwen_not_installed", 409)
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def require_model():
+    installed = model_entry("/api/tags")
+    if installed is None:
+        raise LabError("qwen_not_installed", 409)
+    return installed
+
+
+def run_with_identity(data, installed):
+    try:
+        version = ollama("/api/version").get("version")
+    except LabError:
+        version = None
+    digest = installed.get("digest")
+    result = run_once(data)
+    result["model"] = {
+        "name": MODEL,
+        "digest": digest if isinstance(digest, str) and len(digest) <= 128 else None,
+        "ollama_version": version if isinstance(version, str) and len(version) <= 80 else None,
+    }
+    return result
+
+
+def perform(operation, data, lock_path):
+    with action_lock(lock_path):
+        installed = require_model()
         if operation == "run":
-            try:
-                version = ollama("/api/version").get("version")
-            except LabError:
-                version = None
-            digest = installed.get("digest")
-            result = run_once(data)
-            result["model"] = {
-                "name": MODEL,
-                "digest": digest if isinstance(digest, str) and len(digest) <= 128 else None,
-                "ollama_version": version if isinstance(version, str) and len(version) <= 80 else None,
-            }
-            return result
+            return run_with_identity(data, installed)
         reply = ollama(
             "/api/generate",
             {"model": MODEL, "prompt": "", "stream": False, "keep_alive": KEEP_ALIVE,
@@ -356,7 +404,7 @@ def perform(operation, data, lock_path):
         return {"accepted": True}
 
 
-async def read_input(request, operation):
+async def read_json(request, maximum):
     content_types = request.headers.getlist("content-type")
     if len(content_types) != 1 or content_types[0].partition(";")[0].strip().lower() != "application/json":
         raise LabError("json_required", 415)
@@ -364,27 +412,39 @@ async def read_input(request, operation):
     try:
         async with asyncio.timeout(3):
             async for chunk in request.stream():
-                if len(body) + len(chunk) > MAX_INPUT:
+                if len(body) + len(chunk) > maximum:
                     raise LabError("request_too_large", 413)
                 body.extend(chunk)
-        data = strict_json(body.decode("utf-8"))
-        if operation == "load" and data == {}:
-            return None
-        if operation == "run":
-            arguments = RunInput.model_validate(data)
-            for value, maximum in ((arguments.text, TEXT_BYTES), (arguments.prompt, PROMPT_BYTES)):
-                if not value.strip() or len(value.encode("utf-8")) > maximum:
-                    raise ValueError("Invalid text")
-            return arguments
+        return strict_json(body.decode("utf-8"))
     except TimeoutError:
         raise LabError("input_timeout", 408) from None
     except (ValueError, RecursionError, ClientDisconnect):
         raise LabError("invalid_request", 400) from None
+
+
+def bounded_text(value, maximum):
+    return value.strip() and len(value.encode("utf-8")) <= maximum
+
+
+async def read_input(request, operation):
+    data = await read_json(request, MAX_INPUT)
+    if operation == "load" and data == {}:
+        return None
+    if operation == "run":
+        try:
+            arguments = RunInput.model_validate(data)
+            if bounded_text(arguments.text, TEXT_BYTES) and bounded_text(arguments.prompt, PROMPT_BYTES):
+                return arguments
+        except ValueError:
+            pass
     raise LabError("invalid_request", 400)
 
 
-def install(app, port, token):
-    lock_path = Path(__file__).resolve().parents[1] / ".local/ecran-qwen.lock"
+def install(app, port, token, project=None):
+    from qwen_sets import install_sets
+
+    project = project if project is not None else Path(__file__).resolve().parents[1]
+    lock_path = project / ".local/ecran-qwen.lock"
     host = f"127.0.0.1:{port}"
 
     def authorized(request):
@@ -403,6 +463,8 @@ def install(app, port, token):
         if request.url.query:
             return JSONResponse({"error": "invalid_request"}, status_code=400)
         return await run_in_threadpool(status)
+
+    install_sets(app, authorized, project, port)
 
     @app.post("/internal/qwen/{operation}", include_in_schema=False)
     async def post_action(request: Request, operation: Literal["load", "run"]):

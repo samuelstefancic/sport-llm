@@ -28,6 +28,15 @@ HTTP = build_opener(ProxyHandler({}))
 USER = "llmsport"
 
 
+def qwen_git_sha():
+    try:
+        result = subprocess.run(["git", "rev-parse", "--verify", "HEAD"], cwd=ROOT,
+                                capture_output=True, text=True, timeout=2)
+        return result.stdout.strip() if result.returncode == 0 else ""
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
 def process_signature(pid):
     probe = subprocess.run(["ps", "-ww", "-p", str(pid), "-o", "lstart=", "-o", "command="],
                            text=True, capture_output=True)
@@ -191,7 +200,8 @@ class Instance:
             self.ready("postgres", postgres, self.check_database)
             self.initialize_schema()
             screen_env = dict(os.environ, LLMSPORT_QWEN_TOKEN=secrets.token_hex(32))
-            python_env = dict(screen_env, LLMSPORT_QWEN_SCREEN_PORT=str(self.python))
+            python_env = dict(screen_env, LLMSPORT_QWEN_SCREEN_PORT=str(self.python),
+                              LLMSPORT_QWEN_GIT_SHA=qwen_git_sha())
             python = self.launch("python", [sys.executable, "-B", "-m", "uvicorn", "app:app", "--host", HOST,
                                             "--port", self.python, "--app-dir", ROOT / "python", "--no-access-log"],
                                  env=python_env)

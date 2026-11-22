@@ -30,6 +30,9 @@ import java.util.concurrent.TimeoutException;
 @RestController
 class LocalQwenController {
     private static final int MAX_INPUT = 24_576;
+    private static final int MAX_GAME = 98_304;
+    private static final String GAME = "[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?";
+    private static final String SERIES = "[0-9]{8}-[0-9]{6}-[0-9a-f]{12}";
     private final HttpClient http = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(2))
             .proxy(ProxySelector.of(null))
@@ -49,38 +52,73 @@ class LocalQwenController {
 
     @GetMapping("/api/local/qwen/status")
     ResponseEntity<?> status(HttpServletRequest request) {
-        var rejection = reject(request, false);
-        if (rejection != null) return rejection;
-        if (!"GET".equals(request.getMethod())) return error(405, "method_not_allowed");
-        return forward("status", null, Duration.ofSeconds(6));
+        return read("status", request);
+    }
+
+    @GetMapping("/api/local/qwen/{collection:jeux|series}")
+    ResponseEntity<?> index(@PathVariable String collection, HttpServletRequest request) {
+        return read(collection, request);
+    }
+
+    @GetMapping("/api/local/qwen/jeux/{id:" + GAME + "}")
+    ResponseEntity<?> game(@PathVariable String id, HttpServletRequest request) {
+        return read("jeux/" + id, request);
+    }
+
+    @GetMapping("/api/local/qwen/series/{id:" + SERIES + "}")
+    ResponseEntity<?> series(@PathVariable String id, HttpServletRequest request) {
+        return read("series/" + id, request);
+    }
+
+    @PostMapping("/api/local/qwen/jeux/{id:" + GAME + "}")
+    ResponseEntity<?> saveGame(@PathVariable String id, HttpServletRequest request) {
+        return submit("jeux/" + id, request, MAX_GAME, Duration.ofSeconds(10));
+    }
+
+    @PostMapping("/api/local/qwen/series")
+    ResponseEntity<?> startSeries(HttpServletRequest request) {
+        return submit("series", request, MAX_INPUT, Duration.ofSeconds(10));
     }
 
     @PostMapping("/api/local/qwen/{operation:load|run}")
     ResponseEntity<?> action(@PathVariable String operation, HttpServletRequest request) {
-        var rejection = reject(request, true);
+        return submit(operation, request, MAX_INPUT, Duration.ofSeconds(70));
+    }
+
+    private ResponseEntity<?> read(String operation, HttpServletRequest request) {
+        var rejection = reject(request, false, operation);
+        if (rejection != null) return rejection;
+        if (!"GET".equals(request.getMethod())) return error(405, "method_not_allowed");
+        return forward(operation, null, Duration.ofSeconds(6));
+    }
+
+    private ResponseEntity<?> submit(String operation, HttpServletRequest request, int maximum, Duration timeout) {
+        var rejection = reject(request, true, operation);
         if (rejection != null) return rejection;
         var contentTypes = Collections.list(request.getHeaders("Content-Type"));
         if (contentTypes.size() != 1 || !"application/json".equalsIgnoreCase(contentTypes.get(0).split(";", 2)[0].trim())) {
             return error(415, "json_required");
         }
-        if (request.getContentLengthLong() > MAX_INPUT) return error(413, "request_too_large");
+        if (request.getContentLengthLong() > maximum) return error(413, "request_too_large");
         try {
-            byte[] body = request.getInputStream().readNBytes(MAX_INPUT + 1);
-            if (body.length > MAX_INPUT) return error(413, "request_too_large");
-            return forward(operation, body, Duration.ofSeconds(70));
+            byte[] body = request.getInputStream().readNBytes(maximum + 1);
+            if (body.length > maximum) return error(413, "request_too_large");
+            return forward(operation, body, timeout);
         } catch (IOException ignored) {
             return error(400, "invalid_request");
         }
     }
 
-    private ResponseEntity<?> reject(HttpServletRequest request, boolean action) {
+    private ResponseEntity<?> reject(HttpServletRequest request, boolean action, String operation) {
         if (!token.matches("[0-9a-f]{64}")) return error(503, "qwen_disabled");
         var hosts = Collections.list(request.getHeaders("Host"));
         var origins = Collections.list(request.getHeaders("Origin"));
         if (!hosts.equals(List.of(host)) || ((action || !origins.isEmpty()) && !origins.equals(List.of("http://" + host)))) {
             return error(403, "local_origin_required");
         }
-        if (request.getQueryString() != null) return error(400, "invalid_request");
+        if (request.getQueryString() != null || !request.getRequestURI().equals("/api/local/qwen/" + operation)) {
+            return error(400, "invalid_request");
+        }
         return null;
     }
 
