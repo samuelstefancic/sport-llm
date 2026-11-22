@@ -1,11 +1,13 @@
 """Lit les compteurs des seules sessions inscrites au suivi, par lignes complètes."""
 
+from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 import re
 import stat
-from datetime import datetime, timezone
+import subprocess
 
 
 COUNTERS = ("input_tokens", "cached_input_tokens", "output_tokens",
@@ -33,10 +35,74 @@ def timestamp(value):
     return parsed.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
-def in_project(cwd, project):
-    return isinstance(cwd, str) and Path(cwd).is_absolute() and Path(
-        os.path.normpath(cwd)
-    ).is_relative_to(project)
+def git_path_from_file(file, prefix=b""):
+    if not file.is_file():
+        return None
+    with file.open("rb") as stream:
+        value = stream.read(4097)
+    if len(value) > 4096 or not value.startswith(prefix):
+        return None
+    return (file.parent / os.fsdecode(value.removeprefix(prefix).rstrip(b"\r\n"))).resolve(strict=True)
+
+
+def linked_to(path, common):
+    metadata = path / ".git"
+    try:
+        if metadata.is_dir():
+            return metadata.resolve(strict=True) == common
+        gitdir = git_path_from_file(metadata, b"gitdir: ")
+        return gitdir == common or (
+            gitdir is not None and gitdir.parent == common / "worktrees"
+            and git_path_from_file(gitdir / "gitdir") == metadata
+        )
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def git_worktrees(project):
+    env = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+
+    def read(*args):
+        return subprocess.run(["git", "-C", str(project), *args], env=env, capture_output=True,
+                              timeout=5, check=True).stdout
+
+    try:
+        common = Path(os.fsdecode(read("rev-parse", "--path-format=absolute", "--git-common-dir")
+                                  .removesuffix(b"\n"))).resolve()
+        listing = read("worktree", "list", "--porcelain", "-z")
+        worktrees = []
+        for record in listing.split(b"\0\0"):
+            head, *fields = record.split(b"\0")
+            if not head.startswith(b"worktree ") or any(
+                field == b"bare" or field.startswith(b"prunable") for field in fields
+            ):
+                continue
+            try:
+                path = Path(os.fsdecode(head.removeprefix(b"worktree "))).resolve(strict=True)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if linked_to(path, common):
+                worktrees.append(path)
+        if project not in worktrees:
+            raise RuntimeError("Le dépôt de l’écran ne figure pas dans ses worktrees Git.")
+        return tuple(worktrees)
+    except (OSError, subprocess.SubprocessError):
+        raise RuntimeError("Le périmètre du suivi exige les worktrees Git du dépôt de l’écran.") from None
+
+
+@dataclass(frozen=True)
+class ProjectScope:
+    worktrees: tuple[Path, ...]
+    orchestration: Path | None = None
+
+    def contains(self, cwd):
+        if not isinstance(cwd, str) or not Path(cwd).is_absolute():
+            return False
+        try:
+            path = Path(cwd).resolve()
+        except (OSError, RuntimeError, ValueError):
+            return False
+        return path == self.orchestration or any(path.is_relative_to(root) for root in self.worktrees)
 
 
 def project(data, offset, keys):
@@ -135,11 +201,11 @@ def usage_delta(cumulative, last, previous, first_turn):
 
 
 class Reader:
-    def __init__(self, connection, session_id, root, project, windows):
+    def __init__(self, connection, session_id, root, scope, windows):
         self.db = connection
         self.session_id = session_id
         self.root = root
-        self.project = project
+        self.scope = scope
         self.windows = windows
         self.last_end = None if any(end is None for _, end in windows) else max(end for _, end in windows)
         row = connection.execute("SELECT cursor FROM sources WHERE id = ?", (session_id,)).fetchone()
@@ -207,8 +273,7 @@ class Reader:
                 self.state["matched"] = False
                 return
             meta = project(line, envelope.end(), {b"id": None, b"cwd": None})
-            self.state["matched"] = (meta.get("id") == self.session_id
-                                     and in_project(meta.get("cwd"), self.project))
+            self.state["matched"] = meta.get("id") == self.session_id and self.scope.contains(meta.get("cwd"))
         except (ValueError, RecursionError):
             self.state["matched"] = False
 
@@ -247,6 +312,8 @@ class Reader:
         if kind == "task_started":
             last_turn = self.state.get("turn")
             if last_turn and last_turn["id"] != ident:
+                if not last_turn.get("scoped"):
+                    self.state["scope_interrupted"] = True
                 if self.overlaps(last_turn, at):
                     self.note_turn(last_turn)
                 self.db.execute("""
@@ -265,11 +332,15 @@ class Reader:
                 UPDATE turns SET ended_at=?, status='contexte_suivant'
                 WHERE session_id=? AND id=? AND ended_at IS NULL AND observed_at<?
             """, (at, self.session_id, ident, at))
-            turn["scoped"] = in_project(payload.get("cwd"), self.project)
+            turn["scoped"] = self.scope.contains(payload.get("cwd"))
+            if not turn["scoped"]:
+                self.state["scope_interrupted"] = True
             model = payload.get("model")
             turn["model"] = model if turn["scoped"] and isinstance(model, str) and MODEL.fullmatch(model) else None
             turn["context_at"] = at
         if kind in ("task_complete", "turn_aborted"):
+            if not turn.get("scoped"):
+                self.state["scope_interrupted"] = True
             if self.overlaps(turn, at):
                 self.note_turn(turn)
             status = "termine" if kind == "task_complete" else "interrompu"
@@ -307,6 +378,11 @@ class Reader:
                 self.state["previous"] = cumulative
                 self.state["previous_at"] = at
                 self.state["previous_turn"] = turn.get("id")
+                if turn.get("scoped"):
+                    if self.state.pop("scope_interrupted", False) and last is None:
+                        amounts, state = None, "lacune"
+                else:
+                    self.state["scope_interrupted"] = True
             self.state["seen_counter"] = True
         if not turn.get("scoped") or state == "duplique" or not any(
             start <= at and (end is None or at <= end) for start, end in self.windows

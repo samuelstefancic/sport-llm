@@ -13,7 +13,7 @@ import subprocess
 import time
 from uuid import UUID
 
-from suivi_tokens import COUNTERS, Reader, timestamp
+from suivi_tokens import COUNTERS, ProjectScope, Reader, git_worktrees, timestamp
 
 
 INTERVAL = 5
@@ -22,7 +22,11 @@ RECENT_TASKS = 12
 SERVICES = ("java", "python", "postgres")
 ROLES = ("principal", "sous-agent", "demandeur")
 TASK_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+SCOPE_VERSION = 2
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS tracking_scope (
+  id INTEGER PRIMARY KEY CHECK (id = 1), version INTEGER NOT NULL, orchestration TEXT
+);
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT,
   estimated_at TEXT, min_minutes INTEGER, max_minutes INTEGER
@@ -107,22 +111,48 @@ class Tracking:
             raise RuntimeError("Le répertoire du suivi doit appartenir à l’utilisateur et être privé (0700).")
         self.db_path = self.directory / "historique.sqlite3"
         self.snapshot = self.directory / "affichage.json"
-        self.project = project
+        self.project = project.resolve()
         codex_root = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))
         self.source = self.directory / "sources" if trial else codex_root.resolve()
 
     @contextmanager
-    def locked(self):
+    def locked(self, new_orchestration=None):
         with (self.directory / "ecriture.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             connection = sqlite3.connect(self.db_path, timeout=10)
             connection.row_factory = sqlite3.Row
             try:
                 connection.executescript(SCHEMA)
+                recorded = connection.execute("SELECT version, orchestration FROM tracking_scope WHERE id=1").fetchone()
+                orchestration = recorded["orchestration"] if recorded else None
+                if new_orchestration is not None:
+                    orchestration = new_orchestration or None
+                if recorded is None or tuple(recorded) != (SCOPE_VERSION, orchestration):
+                    self.rebuild(connection, orchestration)
                 with connection:
                     yield connection
             finally:
                 connection.close()
+
+    def rebuild(self, db, orchestration):
+        with (self.directory / "collecteur.lock").open("a") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise RuntimeError("Redémarrer l’écran pour mettre à jour le périmètre du suivi.") from None
+            # Java peut lire ce fichier indépendamment de la transaction SQLite.
+            self.snapshot.unlink(missing_ok=True)
+            with db:
+                for table in ("sources", "turns", "tokens"):
+                    db.execute(f"DELETE FROM {table}")
+                db.execute("INSERT OR REPLACE INTO tracking_scope VALUES (1, ?, ?)",
+                           (SCOPE_VERSION, orchestration))
+                self.scan_sessions(db, now(), require_scope=True)
+            self.publish(db, now())
+
+    def prepare(self, orchestration):
+        with self.locked(orchestration) as db:
+            self.publish(db, now())
 
     def publish(self, db, at):
         latest = db.execute("SELECT * FROM samples ORDER BY at DESC LIMIT 1").fetchone()
@@ -141,20 +171,31 @@ class Tracking:
         temporary.write_text(json.dumps(payload, separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
         temporary.replace(self.snapshot)
 
-    def scan_sessions(self, db, at):
+    def scan_sessions(self, db, at, require_scope=False):
         grace = timestamp((datetime.fromisoformat(at) - timedelta(seconds=DRAIN)).isoformat())
         identifiers = db.execute("""
             SELECT DISTINCT s.id FROM sessions s JOIN tasks t ON t.id=s.task_id
             LEFT JOIN sources r ON r.id=s.id
             WHERE t.finished_at IS NULL OR t.finished_at>=? OR r.observed_at IS NULL
                 OR r.observed_at<=t.finished_at OR r.status='lecture_en_cours'
-        """, (grace,))
-        for (identifier,) in identifiers.fetchall():
+        """, (grace,)).fetchall()
+        if not identifiers:
+            return
+        try:
+            worktrees = git_worktrees(self.project)
+        except RuntimeError:
+            if require_scope:
+                raise
+            # Le prochain tick réessaiera sans avancer les curseurs de lecture.
+            return
+        (orchestration,) = db.execute("SELECT orchestration FROM tracking_scope WHERE id=1").fetchone()
+        scope = ProjectScope(worktrees, Path(orchestration) if orchestration else None)
+        for (identifier,) in identifiers:
             windows = db.execute("""
                 SELECT t.started_at, t.finished_at FROM tasks t
                 JOIN sessions s ON t.id=s.task_id WHERE s.id=?
             """, (identifier,)).fetchall()
-            Reader(db, identifier, self.source, self.project, windows).scan(at)
+            Reader(db, identifier, self.source, scope, windows).scan(at)
 
     def collect(self, instance, same_process):
         with (self.directory / "collecteur.lock").open("a") as lock:

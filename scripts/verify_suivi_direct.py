@@ -7,7 +7,7 @@ import time
 from uuid import uuid4
 
 from suivi_tokens import timestamp
-from test_suivi_direct import TURN, entry, usage
+from test_suivi_direct import NEXT_TURN, TURN, entry, usage
 from verify_ecran_local import ROOT, read, request
 
 
@@ -49,17 +49,25 @@ def main():
     current = datetime.now(timezone.utc)
     started = timestamp((current - timedelta(seconds=8)).isoformat())
     collected = timestamp((current - timedelta(seconds=3)).isoformat())
-    scope = ROOT.parent.resolve()
+    changed = timestamp((current - timedelta(seconds=2)).isoformat())
+    outside = timestamp((current - timedelta(seconds=1)).isoformat())
+    scope = ROOT.resolve()
+    neighbor = scope.parent / f"voisin-fictif-{session_id}"
     # --essai utilise une racine source dédiée. Il ne parcourt jamais les journaux Codex de l’utilisateur.
     directory = ROOT / ".local/ecran-essai/suivi-direct/sources/sessions/2026/01/01"
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     fixture = directory / f"rollout-fictif-{session_id}.jsonl"
-    counts = (50, 25, 9, 4, 62)
+    counts = (10, 4, 2, 1, 12)
     fixture.write_bytes(
         entry(started, "session_meta", {"id": session_id, "cwd": str(scope), "base_instructions": "TEXTE-FICTIF"})
         + entry(started, "task_started", {"turn_id": TURN})
         + entry(started, "turn_context", {"turn_id": TURN, "cwd": str(scope), "model": "gpt-fixture"})
         + usage(collected, counts, counts)
+        + entry(changed, "task_complete", {"turn_id": TURN})
+        + entry(changed, "task_started", {"turn_id": NEXT_TURN})
+        + entry(changed, "turn_context", {"turn_id": NEXT_TURN, "cwd": str(neighbor), "model": "gpt-voisin"})
+        + usage(outside, (110, 44, 22, 11, 132), (100, 40, 20, 10, 120))
+        + entry(outside, "task_complete", {"turn_id": NEXT_TURN})
     )
 
     command("suivi", "declarer", identifier, "--debut", started, "--estime-le", started, "--min", "25", "--max", "45")
@@ -76,11 +84,12 @@ def main():
         assert session_id not in json.dumps(task) and "TEXTE-FICTIF" not in json.dumps(task)
         assert task["estimate_gap_seconds"] < 0 and task["started_at"] == started
         assert task["sessions"][0]["models"] == ["gpt-fixture"]
-        assert task["sessions"][0]["tokens"]["total_tokens"] == 62
+        assert task["sessions"][0]["tokens"]["total_tokens"] == 12
+        assert task["sessions"][0]["turns_completed"] == 1
         return task
 
     active = eventually(observed)
-    print("OK GET local fermé, RAM authentifiée, fenêtre active, estimation et jetons fictifs.")
+    print("OK GET local fermé, RAM authentifiée, fenêtre active, estimation et jetons hors projet exclus.")
 
     print(command("restart").strip())
     after = eventually(observed)
@@ -94,7 +103,7 @@ def main():
     assert not find(read(ENDPOINT), "active_tasks", identifier)
     saved = json.loads(command("suivi", "historique", identifier))
     assert saved["elapsed_seconds"] == closed["elapsed_seconds"]
-    assert saved["memory_samples"] and saved["sessions"][0]["samples"][0]["total_tokens"] == 62
+    assert saved["memory_samples"] and saved["sessions"][0]["samples"][0]["total_tokens"] == 12
     command("suivi", "session", identifier, session_id, "--role", "principal")
     replayed = eventually(lambda data: (
         task if (task := find(data, "history", identifier)) and task["sessions"][0]["source_status"] == "lu" else None

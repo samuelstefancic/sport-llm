@@ -159,9 +159,11 @@ class Instance:
                 raise RuntimeError(f"Maven a renvoyé {built.returncode}. Voir {log_path}.")
             shutil.copyfile(ROOT / "java/target/llmsport-t04.jar", self.jar)
 
-    def start(self):
+    def start(self, orchestration):
         running = self.running()
         if set(running) == {*SERVICES, "suivi"}:
+            if orchestration is not None:
+                raise RuntimeError("Utiliser restart pour modifier le périmètre du suivi.")
             print(f"Écran déjà démarré sur {self.url}/")
             return
         if running:
@@ -179,6 +181,8 @@ class Instance:
         for binary in ("mvn", "java", initdb, postgres_binary):
             if not shutil.which(str(binary)):
                 raise RuntimeError(f"Outil local introuvable : {binary}")
+        tracking = Tracking(self.directory, ROOT, self.trial)
+        tracking.prepare(orchestration)
         self.build()
         self.init_database(initdb)
         try:
@@ -197,7 +201,7 @@ class Instance:
                                        f"--journal.db.user={USER}", f"--spring.config.import=configtree:{self.config}/"])
             self.ready("java", java, lambda: self.get(f"{self.url}/workouts"))
             args = ["--essai"] if self.trial else []
-            snapshot = Tracking(self.directory, ROOT.parent, self.trial).snapshot
+            snapshot = tracking.snapshot
             launched_at = time.time_ns()
             worker = self.launch("suivi", [sys.executable, "-IB", __file__, *args, "_collecteur"])
             self.ready("suivi", worker, lambda: snapshot.stat().st_mtime_ns >= launched_at and
@@ -225,6 +229,19 @@ class Instance:
         return 0 if set(active) == {*SERVICES, "suivi"} else 1
 
 
+def orchestration_directory(value):
+    directory = Path(value)
+    if not directory.is_absolute():
+        raise argparse.ArgumentTypeError("Indiquer le chemin absolu du dossier d’orchestration.")
+    try:
+        resolved = directory.resolve(strict=True)
+        if resolved.is_dir():
+            return str(resolved)
+    except (OSError, RuntimeError, ValueError):
+        pass
+    raise argparse.ArgumentTypeError("Le dossier d’orchestration doit exister.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--essai", action="store_true", help="Ports, sources et cluster distincts pour les vérifications")
@@ -233,13 +250,19 @@ def main():
         command = actions.add_parser(name)
         # Compatibilité avec les commandes utilisant start --essai.
         command.add_argument("--essai", action="store_true", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+        if name in ("start", "restart"):
+            scope = command.add_mutually_exclusive_group()
+            scope.add_argument("--suivi-orchestration-cwd", dest="orchestration", type=orchestration_directory,
+                               help="Autoriser ce dossier d’orchestration, au chemin exact")
+            scope.add_argument("--sans-suivi-orchestration", dest="orchestration", action="store_const", const="",
+                               help="Retirer le dossier d’orchestration du périmètre")
     add_commands(actions.add_parser("suivi", help="Déclarer, rattacher une session, clore ou relire une tâche"))
     args = parser.parse_args()
     os.umask(0o077)
     instance = Instance(args.essai)
     try:
         if args.action in ("suivi", "_collecteur"):
-            tracking = Tracking(instance.directory, ROOT.parent, args.essai)
+            tracking = Tracking(instance.directory, ROOT, args.essai)
             if args.action == "suivi":
                 tracking.command(args)
             else:
@@ -251,7 +274,7 @@ def main():
             if args.action in ("stop", "restart"):
                 instance.stop()
             if args.action in ("start", "restart"):
-                instance.start()
+                instance.start(args.orchestration)
             if args.action == "status":
                 return instance.status()
     except (RuntimeError, OSError, ValueError, sqlite3.Error, subprocess.CalledProcessError, psycopg.Error) as error:
