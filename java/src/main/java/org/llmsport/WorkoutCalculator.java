@@ -6,10 +6,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Measure> measures) {
@@ -37,13 +39,16 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
     private static final Pattern NEGATED = pattern("\\b(?:pas|ni|au lieu de)\\s*$");
     private static final String METERS_SPELLING = "m[èe]tres?|m";
     private static final String KILOMETERS_SPELLING = "kilom[èe]tres?|km";
-    private static final String LINKED_GOAL_PART = NUMBER.pattern()
-            + "(?:\\s*(?:" + METERS_SPELLING + "|" + KILOMETERS_SPELLING + ")\\b)?"
-            + "(?:\\s*,\\s*|\\s+)(?:et|ou|puis)\\s+";
-    private static final Pattern DISTANCE_GOAL_PREFIX = pattern(
-            "\\b(?<reached>j['’]ai\\s+(?:bien\\s+)?atteint\\s+(?:mon\\s+|l['’]))?objectif(?:\\s+de)?\\s*:?\\s*"
-                    + "(?<previousParts>(?:" + LINKED_GOAL_PART + ")*+)$");
-    private static final Pattern DISTANCE_GOAL_REACHED_TAIL = pattern("\\s+(?:est\\s+)?atteint\\b(?!\\s*(?:\\?|ou\\s+non\\b))");
+    private static final String GOAL_UNIT = "(?:\\s*(?:" + METERS_SPELLING + "|" + KILOMETERS_SPELLING + ")\\b)";
+    private static final String GOAL_LINK = "(?:\\s*,\\s*|\\s+)(?:et|ou|puis)\\s+";
+    private static final String GOAL_PART = NUMBER.pattern() + GOAL_UNIT + "?";
+    private static final String MEASURED_GOAL_PART = NUMBER.pattern() + GOAL_UNIT;
+    private static final Pattern DISTANCE_GOAL = pattern(
+            "\\b(?<reachedBefore>j['’]ai\\s+(?:bien\\s+)?atteint\\s+(?:mon\\s+|l['’]))?objectif(?:\\s+de)?\\s*:?\\s*"
+                    + "(?<parts>" + GOAL_PART + "(?:" + GOAL_LINK + GOAL_PART + ")*+)"
+                    + "(?<reachedAfter>\\s+(?:est\\s+)?atteint\\b(?!\\s*(?:\\?|ou\\s+non\\b)))?");
+    private static final Pattern MEASURED_GOAL_PARTS =
+            pattern(MEASURED_GOAL_PART + "(?:" + GOAL_LINK + MEASURED_GOAL_PART + ")*+");
     private static final Pattern ADDITIVE = pattern("\\s*,?\\s*(?:puis|et)\\s*");
     private static final Pattern ALTERNATIVE = pattern("\\s+ou\\s+");
     private static final Pattern PER_SET = pattern("\\s+de\\s+");
@@ -126,6 +131,7 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
 
     private static List<WrittenNumber> writtenNumbers(String text) {
         List<WrittenNumber> numbers = new ArrayList<>();
+        var unmeasuredGoals = unmeasuredGoalStarts(text);
         var number = NUMBER.matcher(text);
         while (number.find()) {
             String prefix = text.substring(0, number.start());
@@ -141,17 +147,25 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
                 }
             }
             if (unit != null && COMPOUND_UNIT_TAIL.matcher(text).region(end, text.length()).lookingAt()) continue;
-            if (unit != null && DISTANCE.equals(unit.field)) {
-                var goal = DISTANCE_GOAL_PREFIX.matcher(prefix);
-                if (goal.find() && goal.group("reached") == null) {
-                    boolean reached = goal.group("previousParts").isEmpty()
-                            && DISTANCE_GOAL_REACHED_TAIL.matcher(text).region(end, text.length()).lookingAt();
-                    if (!reached) continue;
-                }
-            }
+            if (unit != null && DISTANCE.equals(unit.field) && unmeasuredGoals.contains(number.start())) continue;
             numbers.add(new WrittenNumber(number.group(1), number.start(), end, unit, labelledField(prefix)));
         }
         return numbers;
+    }
+
+    private static Set<Integer> unmeasuredGoalStarts(String text) {
+        Set<Integer> starts = new HashSet<>();
+        var goal = DISTANCE_GOAL.matcher(text);
+        while (goal.find()) {
+            int start = goal.start("parts");
+            int end = goal.end("parts");
+            boolean reached = goal.group("reachedBefore") != null || goal.group("reachedAfter") != null;
+            // Keep the group together when an option lacks an explicit unit.
+            if (reached && MEASURED_GOAL_PARTS.matcher(text).region(start, end).matches()) continue;
+            var number = NUMBER.matcher(text).region(start, end);
+            while (number.find()) starts.add(number.start());
+        }
+        return starts;
     }
 
     private static boolean[] sharedDurationParts(String text, List<WrittenNumber> numbers) {

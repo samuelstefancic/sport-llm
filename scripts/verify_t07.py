@@ -181,6 +181,7 @@ def verify_distance_goals(db, port):
         ("CHOICES-ONLY", "Sortie à vélo : objectif 10 km ou 20 km."),
         ("SHARED-UNIT", "Sortie à vélo : objectif 10 ou 20 km."),
         ("TARGET-PARTS-ONLY", "Vélo : objectif 10 km puis 500 m."),
+        ("REACHED-SHARED-UNIT", "Vélo : objectif de 1 ou 2 km atteint."),
         ("NOT-REACHED", "Sortie à vélo : je n’ai pas atteint mon objectif de 10 km."),
         ("NOT-REACHED-AFTER", "Sortie à vélo : objectif de 10 km pas atteint."),
         ("NOT-REACHED-COPULA", "Vélo : mon objectif de 10 km n’est pas atteint."),
@@ -211,6 +212,20 @@ def verify_distance_goals(db, port):
         assert result["measures"] == measures, result["measures"]
         assert result["clarifications"] == []
 
+    for suffix, declaration in (
+        ("REACHED-PARTS-PREFIX", "Vélo : j’ai atteint mon objectif de 1 km et 500 m."),
+        ("REACHED-PARTS-TAIL", "Vélo : objectif de 1 km et 500 m atteint."),
+    ):
+        entry = body(f"T07-DISTANCE-GOAL-{suffix}", declaration)
+        result = saved(db, port, entry, "cycling")
+        known(result, "distance", 1500, "m", entry, "1 km", "500 m")
+        assert result["summary"]["distance"]["operation"] == "sum"
+        assert result["measures"] == [
+            {"id": "distance", "value": 1, "unit": "km", "source": source(entry, "1 km")},
+            {"id": "distance", "value": 500, "unit": "m", "source": source(entry, "500 m")},
+        ]
+        assert result["clarifications"] == []
+
     entry = body("T07-DISTANCE-GOAL-ACTUAL-SEGMENTS", "Sortie à vélo : objectif 10 km ou 20 km, "
                  "mais j’ai parcouru 4,5 km puis 500 m.")
     result = saved(db, port, entry, "cycling")
@@ -218,16 +233,20 @@ def verify_distance_goals(db, port):
     assert result["summary"]["distance"]["operation"] == "sum" and len(result["measures"]) == 2
     assert result["clarifications"] == []
 
-    entry = body("T07-DISTANCE-DECLARED-CHOICES", "Sortie à vélo : j’ai parcouru 2 km ou 4,5 km.")
-    result = saved(db, port, entry, "cycling")
-    row = result["summary"]["distance"]
-    assert (row["status"], row["value"], row["unit"]) == ("unresolved", None, None), row
-    assert row["sources"] == [source(entry, "2 km"), source(entry, "4,5 km")]
-    assert result["measures"] == [
-        {"id": "distance", "value": 2, "unit": "km", "source": source(entry, "2 km")},
-        {"id": "distance", "value": 4.5, "unit": "km", "source": source(entry, "4,5 km")},
-    ]
-    assert [question["field"] for question in result["clarifications"]] == ["distance"]
+    for suffix, declaration in (
+        ("DECLARED", "Sortie à vélo : j’ai parcouru 2 km ou 4,5 km."),
+        ("REACHED", "Vélo : objectif de 2 km ou 4,5 km atteint."),
+    ):
+        entry = body(f"T07-DISTANCE-CHOICES-{suffix}", declaration)
+        result = saved(db, port, entry, "cycling")
+        row = result["summary"]["distance"]
+        assert (row["status"], row["value"], row["unit"]) == ("unresolved", None, None), row
+        assert row["sources"] == [source(entry, "2 km"), source(entry, "4,5 km")]
+        assert result["measures"] == [
+            {"id": "distance", "value": 2, "unit": "km", "source": source(entry, "2 km")},
+            {"id": "distance", "value": 4.5, "unit": "km", "source": source(entry, "4,5 km")},
+        ]
+        assert [question["field"] for question in result["clarifications"]] == ["distance"]
     print("PASS objectif de distance : distance parcourue ou objectif atteint, objectif seul ou non atteint sans total ; "
           "POST/GET/SQL")
 
