@@ -218,6 +218,14 @@ summary { cursor: pointer; color: var(--green-dark); font-size: .9rem; font-weig
 #history-more { margin-top: .7rem; }
 
 .decision-panel { background: #eaf1e7; border-color: #d5e2d4; }
+.live-tracking { margin-bottom: 18px; }
+.live-task { margin-top: 1rem; }
+.live-state { margin-left: .6rem; vertical-align: middle; }
+.live-times, .live-tasks-history, .live-memory { margin-top: .6rem; }
+.live-clock { font-variant-numeric: tabular-nums; font-weight: 650; }
+.live-task + .live-task { border-top: 1px solid var(--edge); padding-top: .8rem; }
+.live-tracking .table-wrap { margin-top: .55rem; }
+
 .decision-panel .pill { margin-bottom: .7rem; border-color: #b8cbb8; }
 .decision-panel p, .tracking-stack .panel > p { margin-top: .55rem; color: var(--muted); }
 .decision-panel time { font-weight: 650; font-size: .82rem; }

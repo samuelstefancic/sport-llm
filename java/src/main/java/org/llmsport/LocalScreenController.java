@@ -7,6 +7,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,10 +43,14 @@ class LocalScreenController {
     private static final String POLICY = "default-src 'self'; object-src 'none'; base-uri 'none'; "
             + "frame-ancestors 'none'; form-action 'self'";
     private final Path worktree;
+    private final Path liveSnapshot;
     private final JournalStore store;
 
-    LocalScreenController(@Value("${ecran.worktree}") String worktree, JournalStore store) throws IOException {
+    LocalScreenController(@Value("${ecran.worktree}") String worktree,
+                          @Value("${ecran.trial:false}") boolean trial, JournalStore store) throws IOException {
         this.worktree = Path.of(worktree).toRealPath();
+        this.liveSnapshot = this.worktree.resolve(trial ? ".local/ecran-essai" : ".local/ecran")
+                .resolve("suivi-direct/affichage.json");
         this.store = store;
     }
 
@@ -63,6 +68,28 @@ class LocalScreenController {
     @GetMapping("/ecran/suivi.json")
     ResponseEntity<Resource> tracking() {
         return localFile(worktree.resolve("documentation/suivi-local.json"), "application/json");
+    }
+
+    @GetMapping("/api/local/suivi/direct")
+    ResponseEntity<?> liveTracking(HttpServletRequest request) {
+        if (!HttpMethod.GET.matches(request.getMethod())) {
+            return ResponseEntity.status(405).allow(HttpMethod.GET).build();
+        }
+        if (request.getQueryString() != null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "unexpected_parameters"));
+        }
+        try {
+            if (liveSnapshot.equals(liveSnapshot.toRealPath()) && Files.isRegularFile(liveSnapshot)) {
+                // Lire un instantané entier malgré le remplacement atomique du fichier par le collecteur.
+                byte[] snapshot = Files.readAllBytes(liveSnapshot);
+                return ResponseEntity.ok().cacheControl(CacheControl.noStore()).contentType(MediaType.APPLICATION_JSON)
+                        .header("X-Content-Type-Options", "nosniff").body(snapshot);
+            }
+        } catch (IOException ignored) {
+            // Le collecteur peut démarrer après Java.
+        }
+        return ResponseEntity.status(503).cacheControl(CacheControl.noStore())
+                .body(Map.of("error", "live_tracking_unavailable"));
     }
 
     @GetMapping("/ecran/preuves/{id:[a-z0-9-]+}")

@@ -267,3 +267,194 @@ export async function showTracking() {
     loading = false;
   }
 }
+
+
+const liveCollector = document.querySelector("#live-collector");
+const liveTasks = document.querySelector("#live-tasks");
+const liveMemory = document.querySelector("#live-memory");
+const instant = new Intl.DateTimeFormat("fr-FR", {
+  dateStyle: "short", timeStyle: "medium", timeZone: "Europe/Paris",
+});
+const serviceNames = [["java", "Spring Boot"], ["python", "FastAPI"], ["postgres", "PostgreSQL · parent"]];
+const roles = { principal: "Principal", "sous-agent": "Sous-agent", demandeur: "Demandeur" };
+const sourceStatus = {
+  non_lu: "Lecture en attente", indisponible: "Source indisponible",
+  hors_perimetre: "Session hors périmètre", lecture_en_cours: "Lecture en cours",
+};
+const pressureLabels = { 1: "Normale", 2: "Avertissement", 4: "Critique" };
+let liveData;
+let liveNetworkError = false;
+let liveLoading = false;
+let pollTimer;
+let clockTimer;
+
+function observedAt(value) {
+  const parsed = Date.parse(value?.replace(/(\.\d{3})\d+Z$/, "$1Z"));
+  return Number.isFinite(parsed) ? instant.format(parsed) : "Indisponible";
+}
+
+function duration(value) {
+  const seconds = Math.max(0, Math.floor(value));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor(seconds / 60) % 60;
+  return [hours ? `${hours} h` : "", minutes || hours ? `${minutes} min` : "", `${seconds % 60} s`]
+    .filter(Boolean).join(" ");
+}
+
+function updateClock(clock, at) {
+  const elapsed = clock.dataset.end
+    ? Number(clock.dataset.elapsed)
+    : Math.max(0, (at - Date.parse(clock.dataset.start)) / 1000);
+  if (!Number.isFinite(elapsed)) return;
+  let gapText = "Écart indisponible";
+  if (clock.dataset.low !== undefined) {
+    const low = Number(clock.dataset.low) * 60;
+    const high = Number(clock.dataset.high) * 60;
+    const gap = elapsed - Math.min(Math.max(elapsed, low), high);
+    gapText = gap === 0 ? "Dans la fourchette"
+      : `${gap < 0 ? "−" : "+"}${duration(Math.abs(gap))} · ${gap < 0 ? "sous la borne basse" : "au-delà de la borne haute"}`;
+  }
+  const text = `Temps mural · ${duration(elapsed)} · ${gapText}`;
+  if (clock.textContent !== text) clock.textContent = text;
+}
+
+function updateLiveClocks() {
+  const at = Date.now();
+  for (const clock of liveTasks.querySelectorAll("[data-live-clock]")) updateClock(clock, at);
+  const sample = liveData?.latest_sample;
+  const age = sample ? Math.max(0, (at - Date.parse(sample.at)) / 1000) : null;
+  const valid = sample && serviceNames.some(([key]) => Number.isFinite(sample[key]));
+  let state = "Collecte indisponible";
+  if (age !== null) {
+    state = age > liveData.sample_interval_seconds * 3 ? `Relevé en retard · ${duration(age)}`
+      : valid ? `Relevé il y a ${duration(age)}` : "RSS indisponible";
+  }
+  if (liveNetworkError) state += " · actualisation impossible";
+  if (liveCollector.textContent !== state) liveCollector.textContent = state;
+}
+
+function liveMemoryOverview(sample) {
+  const block = node("div", undefined, "live-memory");
+  block.append(node("h3", "Mémoire de la démo locale"));
+  if (!sample) {
+    block.append(node("p", "Aucun échantillon disponible.", "muted"));
+    return block;
+  }
+  const values = serviceNames.map(([key, label]) => `${label} ${inMio(sample[key], 1024)}`);
+  const pressure = sample.pressure === null ? "indisponible" : (pressureLabels[sample.pressure] ?? `niveau ${sample.pressure}`);
+  block.append(node("p", values.join(" · ")),
+    node("p", `RSS observé le ${observedAt(sample.at)} · Pression système ${pressure}.`, "muted"));
+  return block;
+}
+
+function liveSessionRows(task) {
+  return task.sessions.map(session => {
+    const tokens = session.tokens;
+    const known = session.snapshots > 0;
+    const usage = known ? [
+      `${number.format(tokens.input_tokens)} entrée (${tokens.cached_input_tokens === null
+        ? "cache indisponible" : `dont ${number.format(tokens.cached_input_tokens)} en cache`})`,
+      `${number.format(tokens.output_tokens)} sortie (${tokens.reasoning_output_tokens === null
+        ? "inclusion du raisonnement non attestée" : `dont ${number.format(tokens.reasoning_output_tokens)} de raisonnement`})`,
+      `${number.format(tokens.total_tokens)} au total`,
+    ].join(" · ") : "Indisponibles";
+    const notes = [];
+    if (known) notes.push(`${session.snapshots} relevé(s) · dernier ${observedAt(session.last_at)}`);
+    if (session.missing_snapshots) notes.push(`${session.missing_snapshots} relevé(s) incomplet(s)`);
+    if (session.counter_resets) notes.push(`${session.counter_resets} remise(s) à zéro observée(s)`);
+    if (session.boundary_snapshots) notes.push(`${session.boundary_snapshots} relevé(s) à la frontière de début`);
+    if (sourceStatus[session.source_status]) notes.push(sourceStatus[session.source_status]);
+    return [
+      `${roles[session.role]} #${session.number}`, session.models.join(", ") || "Indisponible", usage,
+      notes.join(" · ") || "Aucun compteur dans la fenêtre",
+    ];
+  });
+}
+
+function liveTaskDetails(task, openSamples) {
+  const block = node("article", undefined, "live-task");
+  const title = node("h3", task.id);
+  title.append(node("span", task.status === "actif" ? "En cours" : "Terminée", "pill live-state"));
+  block.append(title);
+  const clock = node("p", undefined, "live-clock");
+  clock.dataset.liveClock = "";
+  clock.dataset.start = task.started_at;
+  clock.dataset.end = task.finished_at ?? "";
+  clock.dataset.elapsed = task.elapsed_seconds;
+  if (task.estimate) {
+    clock.dataset.low = task.estimate.min_minutes;
+    clock.dataset.high = task.estimate.max_minutes;
+  }
+  updateClock(clock, Date.now());
+  const estimate = task.estimate
+    ? `${task.estimate.min_minutes}–${task.estimate.max_minutes} min · estimées le ${observedAt(task.estimate.estimated_at)}`
+    : "Estimation initiale inconnue";
+  const finished = task.finished_at ? ` · fin ${observedAt(task.finished_at)}` : "";
+  block.append(node("p", `Début ${observedAt(task.started_at)}${finished} · ${estimate}`, "live-times muted"), clock);
+  if (task.sessions.length) {
+    table(block, "Compteurs Codex par session", ["Session", "Modèle observé", "Jetons", "Collecte"], liveSessionRows(task));
+    block.append(node("p", "Jetons attribués à la date d’émission du compteur, par session. Les appels qui chevauchent une borne ne sont pas ventilés.", "source-note"));
+  } else {
+    block.append(node("p", "Aucune session Codex inscrite pour mesurer les jetons.", "muted"));
+  }
+  const samples = node("details");
+  samples.dataset.liveSamples = task.id;
+  samples.open = openSamples.has(task.id);
+  const peaks = serviceNames.map(([key, label]) => `${label} ${inMio(task.memory[key], 1024)}`);
+  samples.append(node("summary", "Pics RSS et derniers échantillons"));
+  if (task.memory.count === 0) {
+    samples.append(node("p", "Aucun relevé mémoire dans cette fenêtre.", "muted"));
+  } else {
+    samples.append(node("p", `${task.memory.count} échantillon(s) du ${observedAt(task.memory.first_at)} au ${observedAt(task.memory.last_at)} · maximum par service.`),
+      node("p", peaks.join(" · ")));
+    table(samples, "Derniers échantillons RSS en Mio", ["Relevé", ...serviceNames.map(([, label]) => label)],
+      task.recent_memory_samples.map(row => [observedAt(row.at), ...serviceNames.map(([key]) => inMio(row[key], 1024))]));
+  }
+  block.append(samples);
+  return block;
+}
+
+function renderLive(data) {
+  const openSamples = new Set([...liveTasks.querySelectorAll("details[data-live-samples][open]")]
+    .map(details => details.dataset.liveSamples));
+  const historyOpen = liveTasks.querySelector(".live-tasks-history")?.open;
+  const blocks = data.active_tasks.map(task => liveTaskDetails(task, openSamples));
+  if (!blocks.length) blocks.push(node("p", "Aucune tâche en cours.", "muted"));
+  if (data.history.length) {
+    const history = node("details", undefined, "live-tasks-history");
+    history.open = historyOpen ?? (data.active_tasks.length === 0);
+    history.append(node("summary", "Tâches terminées"), ...data.history.map(task => liveTaskDetails(task, openSamples)));
+    blocks.push(history);
+  }
+  liveTasks.replaceChildren(...blocks);
+  liveMemory.replaceChildren(liveMemoryOverview(data.latest_sample));
+}
+
+async function refreshLive() {
+  if (liveLoading || document.hidden) return;
+  liveLoading = true;
+  try {
+    const response = await fetch("/api/local/suivi/direct", { cache: "no-store", signal: AbortSignal.timeout(4000) });
+    if (!response.ok) throw new Error();
+    const data = await response.json();
+    if (data.schema_version !== 1) throw new Error();
+    liveData = data;
+    liveNetworkError = false;
+    renderLive(data);
+  } catch {
+    liveNetworkError = true;
+    if (!liveData) liveTasks.replaceChildren(node("p", "Aucun relevé du collecteur disponible.", "muted"));
+  } finally {
+    liveLoading = false;
+    updateLiveClocks();
+  }
+}
+
+export function watchLiveTracking(enabled) {
+  clearInterval(pollTimer);
+  clearInterval(clockTimer);
+  if (!enabled) return;
+  refreshLive();
+  pollTimer = setInterval(refreshLive, 5000);
+  clockTimer = setInterval(updateLiveClocks, 1000);
+}

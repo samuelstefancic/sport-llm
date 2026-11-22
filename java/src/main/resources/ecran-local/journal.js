@@ -1,4 +1,4 @@
-import { showTracking } from "./suivi.js";
+import { showTracking, watchLiveTracking } from "./suivi.js";
 
 const example = "Sortie à vélo : objectif 10 km, mais j’ai parcouru 4,5 km.";
 const activityLabels = { cycling: "Vélo", running: "Course", mobility: "Mobilité", squat: "Squat" };
@@ -74,6 +74,7 @@ function route() {
     if (link.hash === (tracking ? "#suivi" : "#journal")) link.setAttribute("aria-current", "page");
     else link.removeAttribute("aria-current");
   }
+  watchLiveTracking(tracking);
   if (tracking) showTracking();
 }
 

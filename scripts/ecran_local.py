@@ -9,12 +9,17 @@ import secrets
 import shutil
 import signal
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
 from urllib.request import ProxyHandler, build_opener
 
 import psycopg
+
+# Le lanceur isolé (-I) ne place pas le répertoire du script sur sys.path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from suivi_direct import SERVICES, Tracking, add_commands
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +49,7 @@ def same_process(pid, signature):
 
 class Instance:
     def __init__(self, trial):
+        self.trial = trial
         self.web, self.python, self.postgres = (8213, 8214, 8215) if trial else (8113, 8114, 8115)
         self.directory = ROOT / ".local" / ("ecran-essai" if trial else "ecran")
         self.directory.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -65,7 +71,7 @@ class Instance:
         temporary.replace(self.state_path)
 
     def stop(self):
-        for name in ("java", "python", "postgres"):
+        for name in ("suivi", *SERVICES):
             if name not in self.state:
                 continue
             process = self.state[name]
@@ -156,7 +162,7 @@ class Instance:
 
     def start(self):
         running = self.running()
-        if len(running) == 3:
+        if set(running) == {*SERVICES, "suivi"}:
             print(f"Écran déjà démarré sur {self.url}/")
             return
         if running:
@@ -183,11 +189,17 @@ class Instance:
             self.ready("python", python, lambda: self.get(f"http://{HOST}:{self.python}/openapi.json"))
             java = self.launch("java", [shutil.which("java"), "-jar", self.jar, f"--server.port={self.web}",
                                        f"--server.address={HOST}", "--spring.profiles.active=ecran-local",
-                                       f"--ecran.worktree={ROOT}",
+                                       f"--ecran.worktree={ROOT}", f"--ecran.trial={str(self.trial).lower()}",
                                        f"--python.base-url=http://{HOST}:{self.python}",
                                        f"--journal.jdbc.url=jdbc:postgresql://{HOST}:{self.postgres}/postgres",
                                        f"--journal.db.user={USER}", f"--spring.config.import=configtree:{self.config}/"])
             self.ready("java", java, lambda: self.get(f"{self.url}/workouts"))
+            args = ["--essai"] if self.trial else []
+            snapshot = Tracking(self.directory, ROOT.parent, self.trial).snapshot
+            launched_at = time.time_ns()
+            worker = self.launch("suivi", [sys.executable, "-IB", __file__, *args, "_collecteur"])
+            self.ready("suivi", worker, lambda: snapshot.stat().st_mtime_ns >= launched_at and
+                       self.get(f"{self.url}/api/local/suivi/direct"))
         except (Exception, KeyboardInterrupt):
             self.stop()
             raise
@@ -208,17 +220,29 @@ class Instance:
             print(f"{self.url}/ · " + ", ".join(f"{name} {pid}" for name, pid in active.items()))
         else:
             print(f"Services arrêtés. Répertoire du journal : {self.data}.")
-        return 0 if len(active) == 3 else 1
+        return 0 if set(active) == {*SERVICES, "suivi"} else 1
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("start", "stop", "restart", "status"))
-    parser.add_argument("--essai", action="store_true", help="Ports et cluster distincts pour les vérifications")
+    parser.add_argument("--essai", action="store_true", help="Ports, sources et cluster distincts pour les vérifications")
+    actions = parser.add_subparsers(dest="action", required=True)
+    for name in ("start", "stop", "restart", "status", "_collecteur"):
+        command = actions.add_parser(name)
+        # Compatibilité avec les commandes utilisant start --essai.
+        command.add_argument("--essai", action="store_true", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+    add_commands(actions.add_parser("suivi", help="Déclarer, rattacher une session, clore ou relire une tâche"))
     args = parser.parse_args()
     os.umask(0o077)
     instance = Instance(args.essai)
     try:
+        if args.action in ("suivi", "_collecteur"):
+            tracking = Tracking(instance.directory, ROOT.parent, args.essai)
+            if args.action == "suivi":
+                tracking.command(args)
+            else:
+                tracking.collect(instance, same_process)
+            return 0
         with (instance.directory / "commande.lock").open("a") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             instance.load_state()
@@ -228,8 +252,8 @@ def main():
                 instance.start()
             if args.action == "status":
                 return instance.status()
-    except (RuntimeError, OSError, subprocess.CalledProcessError, psycopg.Error) as error:
-        parser.exit(1, f"Échec du lancement local : {error}\n")
+    except (RuntimeError, OSError, ValueError, sqlite3.Error, subprocess.CalledProcessError, psycopg.Error) as error:
+        parser.exit(1, f"Écran local : {error}\n")
     return 0
 
 
