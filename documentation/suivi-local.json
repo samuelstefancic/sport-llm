@@ -1,0 +1,54 @@
+{
+  "maj": "2026-11-22",
+  "encours": "P2 · baseline déterministe",
+  "decision": {
+    "date": "2026-11-20",
+    "titre": "Baseline conservée · T11 reporté",
+    "texte": "Le banc pré-T11 n’a qualifié aucun candidat. Les deux Qwen échouent sur F10 et perdent des cas stables de la baseline. Le journal utilise les règles locales."
+  },
+  "reperes": [
+    {
+      "date": "2026-11-18",
+      "titre": "T10 · mesure avant F10",
+      "texte": "Évaluation du parcours métier sur 30 cas fictifs de développement, dont 25 exécutés. Les cinq cas mixtes ou ambigus ne figurent pas dans le score.",
+      "preuves": ["t10-mesures", "t10-manifeste"]
+    },
+    {
+      "date": "2026-11-19",
+      "titre": "F10 · correction du repas fusionnée",
+      "texte": "La baseline sur c255746 inclut la correction F10. Le rejeu comparatif ultérieur retrouve le même score T10 entre c255746 et la fusion VS1.",
+      "preuves": ["vs1-comparaison"]
+    },
+    {
+      "date": "2026-11-19",
+      "titre": "Banc pré-T11 · trois moteurs essayés",
+      "texte": "Extraction sur 16 déclarations fictives et 2 variantes. Un cas stable réussit les deux répétitions à chaud. Les portes de sélection comprenaient F10, la non-régression et un seuil de latence.",
+      "preuves": ["banc-resultats", "banc-protocole", "banc-mesures", "banc-memoire"]
+    },
+    {
+      "date": "2026-11-22",
+      "titre": "Qwen3 4B · sortie contrainte",
+      "texte": "Sonde distincte sur quatre cas choisis, deux répétitions par format, avec les mêmes critères d’exactitude. La contrainte traite la structure JSON. La décision T11 reste applicable.",
+      "preuves": ["sonde-mesures", "sonde-manifeste"]
+    },
+    {
+      "date": "2026-11-22",
+      "titre": "VS1 · distance réalisée vérifiée",
+      "texte": "La correction distingue la distance parcourue de l’objectif. La livraison locale atteste le POST, la relecture et le rejeu. La CI réussie porte sur le SHA de fusion de la PR #11.",
+      "preuves": ["vs1-recu", "vs1-fusion", "vs1-comparaison"]
+    }
+  ],
+  "preuves": {
+    "t10-mesures": "T10 · métriques du premier run",
+    "t10-manifeste": "T10 · manifeste du premier run",
+    "banc-resultats": "Banc pré-T11 · compte rendu",
+    "banc-protocole": "Banc pré-T11 · protocole",
+    "banc-mesures": "Banc pré-T11 · mesures et cas",
+    "banc-memoire": "Banc pré-T11 · empreinte macOS",
+    "sonde-mesures": "Sonde Qwen3 4B · comparaison des formats",
+    "sonde-manifeste": "Sonde Qwen3 4B · manifeste",
+    "vs1-recu": "VS1 · reçu de livraison et CI",
+    "vs1-fusion": "VS1 · résultats HTTP et SQL sur la fusion",
+    "vs1-comparaison": "VS1 · comparaison T10"
+  }
+}

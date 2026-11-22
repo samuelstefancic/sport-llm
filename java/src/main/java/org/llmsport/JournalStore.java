@@ -249,6 +249,36 @@ class JournalStore {
                 WHERE e.entry_kind=? AND e.entry_id=?""", kind, id, null);
     }
 
+    JsonNode workoutHistory(long offset) throws SQLException {
+        final int pageSize = 30;
+        var page = mapper.createObjectNode();
+        var entries = page.putArray("entries");
+        try (var db = open(); var statement = db.prepareStatement("""
+                SELECT r.entry_id, r.entry_revision, r.recorded_at, e.current_revision, r.payload->>'activity',
+                       COALESCE(r.payload->'source'->>'text', d.body->>'text')
+                FROM journal_result r
+                JOIN journal_entry e ON e.entry_id = r.entry_id
+                LEFT JOIN journal_declaration d ON d.entry_id = r.entry_id AND d.entry_revision = r.entry_revision
+                WHERE r.entry_kind = 'workout'
+                ORDER BY r.recorded_at DESC NULLS LAST, r.entry_id, r.entry_revision DESC
+                LIMIT ? OFFSET ?""")) {
+            statement.setInt(1, pageSize + 1);
+            statement.setLong(2, offset);
+            try (var rows = statement.executeQuery()) {
+                while (entries.size() < pageSize && rows.next()) {
+                    var recordedAt = rows.getTimestamp(3);
+                    entries.addObject().put("entry_id", rows.getString(1)).put("entry_revision", rows.getLong(2))
+                            .put("recorded_at", recordedAt == null ? null : recordedAt.toInstant().toString())
+                            .put("current_revision", rows.getLong(4)).put("activity", rows.getString(5))
+                            .put("text", rows.getString(6));
+                }
+                if (entries.size() == pageSize && rows.next()) page.put("next_offset", offset + pageSize);
+                else page.putNull("next_offset");
+            }
+        }
+        return page;
+    }
+
     private JsonNode read(String query, String kind, String id, Long revision) throws SQLException, IOException {
         try (var db = open(); var statement = db.prepareStatement(query)) {
             statement.setString(1, kind);

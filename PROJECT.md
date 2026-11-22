@@ -61,7 +61,7 @@ Lot option C réalisé le 17 novembre 2026 : [preuves et effort observé](docume
 
 Les futurs bilans d'évaluation publieront corrects/total et, pour l'acceptation automatique, corrects acceptés/acceptés avec leur couverture et les erreurs critiques par catégorie ; une précision avec zéro acceptation est indéfinie. Clarifications et abstentions restent distinctes. Les objectifs chiffrés de l'ébauche sont des hypothèses, pas des mesures ni des seuils validés. Les 30 cas servent à développer ; toute sélection sur ces cas exclut leur emploi comme test final indépendant.
 
-La [mesure de la baseline déterministe T10](documentation/p2/baseline.md) ouvre P2. T11 attend sa décision de lancement. RAG-01 est prévu en fin de P2.
+La [mesure de la baseline déterministe T10](documentation/p2/baseline.md) ouvre P2. Le [suivi local](documentation/suivi-local.json) porte la décision T11, la chronologie et les preuves de l’écran. RAG-01 est prévu en fin de P2.
 
 ## T04 — échange HTTP local
 
