@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0.0",
+  "name": "Riz corrigé et déclaration sans aliment",
+  "cases": [
+    {
+      "name": "Quantité corrigée",
+      "text": "Pour le riz cuit, 100 g et non 150 g.",
+      "expected": [
+        {
+          "anchor": "riz cuit, 100 g et non 150 g",
+          "state": "cooked",
+          "quantity": {
+            "value": 100,
+            "unit": "g"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Aucun aliment déclaré",
+      "text": "Je complète mon journal plus tard.",
+      "expected": []
+    }
+  ]
+}

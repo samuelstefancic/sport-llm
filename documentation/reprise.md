@@ -47,6 +47,7 @@ Enchaîner les lots couverts par le mandat. Pour T11, relire la décision P2 dan
 | Clarifier un ticket ou les frontières Java/Python | `sn-plan-contracts` |
 | Corpus, unités, licence ou séparation des données | `sn-data-provenance` |
 | Exercice ou patch borné | `sn-build-and-learn` |
+| Créer, figer ou rejouer un jeu d’essai du laboratoire Qwen | [`sn-qwen-test-suites`](../.agents/skills/sn-qwen-test-suites/SKILL.md) |
 | Comparer les sorties et les erreurs d’un modèle | `sn-evaluate-models` |
 | Latence, mémoire, débit ou coût d’inférence | `sn-benchmark-inference` |
 | CI, environnement local, exploitation ou reprise | `sn-platform-ops` |
