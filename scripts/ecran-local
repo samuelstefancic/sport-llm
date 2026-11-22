@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+tools=${LLMSPORT_T10_TOOLS:-"$root/../github-t10/.local/t10"}
+python=${LLMSPORT_PYTHON:-"$tools/venv/bin/python"}
+case "$python" in
+    /*) ;;
+    *) python="$(pwd -P)/$python" ;;
+esac
+if [ ! -f "$python" ] || [ ! -x "$python" ]; then
+    echo "Interpréteur Python local introuvable ou inexécutable : $python" >&2
+    exit 1
+fi
+LLMSPORT_T10_TOOLS="$tools" exec "$python" -IB "$root/scripts/ecran_local.py" "$@"

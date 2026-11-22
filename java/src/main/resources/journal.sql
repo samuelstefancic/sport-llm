@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS journal_idempotency (
 );
 
 ALTER TABLE journal_result ADD COLUMN IF NOT EXISTS declaration_bound boolean NOT NULL DEFAULT false;
+ALTER TABLE journal_result ADD COLUMN IF NOT EXISTS recorded_at timestamptz;
+ALTER TABLE journal_result ALTER COLUMN recorded_at SET DEFAULT clock_timestamp();
 
 -- Older writers omit declaration_bound. Preserve their INSERT format for an unreserved revision
 -- in the entry's domain, including the first result for a new identifier.

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>llmSport · Journal local</title>
+  <link rel="stylesheet" href="/ecran/style.css">
+  <script type="module" src="/ecran/journal.js"></script>
+</head>
+<body>
+  <a class="skip" href="#contenu">Aller au contenu</a>
+  <header class="site-header">
+    <div class="masthead">
+      <a class="brand" href="#journal"><span class="brand-mark" aria-hidden="true">∿</span> llmSport</a>
+      <nav aria-label="Navigation principale">
+        <a href="#journal" aria-current="page">Journal</a>
+        <a href="#suivi">Suivi</a>
+      </nav>
+    </div>
+  </header>
+  <main id="contenu" class="workspace" tabindex="-1">
+    <section id="journal" aria-labelledby="journal-title">
+      <div class="intro">
+        <div>
+          <h1 id="journal-title">Journal sportif</h1>
+          <p>Décrivez votre séance, vérifiez les mesures retenues et retrouvez vos séances enregistrées.</p>
+        </div>
+        <span class="local-status"><span aria-hidden="true"></span> Instance locale</span>
+      </div>
+      <div class="journal-layout">
+        <div class="journal-primary">
+          <section class="panel form-panel" aria-labelledby="entry-title">
+            <h2 id="entry-title">Nouvelle séance</h2>
+            <form id="entry-form">
+              <label for="entry-text">Votre déclaration</label>
+              <textarea id="entry-text" name="text" rows="4" maxlength="4000" required placeholder="Ce que vous avez fait, par exemple une distance ou une durée."></textarea>
+              <div class="actions">
+                <button id="example" class="button secondary" type="button">Charger l’exemple vélo VS1</button>
+                <button id="submit" class="button primary" type="submit">Analyser et enregistrer</button>
+              </div>
+            </form>
+            <p id="entry-message" class="feedback" role="status" hidden></p>
+          </section>
+          <section id="result-panel" class="panel result-panel" aria-labelledby="result-title">
+            <div class="panel-head">
+              <h2 id="result-title">Résultat de la séance</h2>
+              <span id="result-status" class="pill" hidden></span>
+            </div>
+            <div id="result-content" aria-live="polite">
+              <p class="muted">Enregistrez une séance ou choisissez-en une dans l’historique.</p>
+            </div>
+          </section>
+        </div>
+        <aside class="panel history" aria-labelledby="history-title">
+          <div class="panel-head">
+            <h2 id="history-title">Historique</h2>
+            <button id="refresh" class="text-button" type="button">Actualiser</button>
+          </div>
+          <p id="history-message" class="feedback muted" role="status">Chargement du journal…</p>
+          <ul id="history-list" class="history-list"></ul>
+          <button id="history-more" class="button secondary" type="button" hidden>Afficher la suite</button>
+        </aside>
+      </div>
+    </section>
+
+    <section id="suivi" aria-labelledby="suivi-title" hidden>
+      <div class="intro">
+        <div>
+          <h1 id="suivi-title">Suivi du projet</h1>
+          <p>Décisions, mesures de développement et preuves de vérification.</p>
+        </div>
+        <span id="tracking-date" class="local-status" hidden></span>
+      </div>
+      <section id="live-tracking" class="panel live-tracking" aria-labelledby="live-title">
+        <div class="panel-head">
+          <h2 id="live-title">Suivi en direct</h2>
+          <span id="live-collector" class="pill">Chargement…</span>
+        </div>
+        <div id="live-tasks"></div>
+        <div id="live-memory"></div>
+        <p><a href="http://127.0.0.1:11434/api/ps">Voir les modèles chargés dans Ollama</a></p>
+      </section>
+      <div id="tracking-content" aria-live="polite">
+        <p class="panel muted">Chargement du suivi…</p>
+      </div>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <span>llmSport</span>
+    <span>Journal local · données enregistrées dans PostgreSQL</span>
+  </footer>
+</body>
+</html>

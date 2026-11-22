@@ -23,6 +23,8 @@ jobs:
           python-version: '3.11'
       - name: Dépendances des vérifications
         run: python -m pip install -r python/requirements.txt -r catalog/requirements.txt jsonschema==4.26.0
+      - name: Tests unitaires du suivi direct
+        run: python -B scripts/test_suivi_direct.py
       - name: Contrat, régressions et intégration Compose
         env:
           PYTHONUNBUFFERED: '1'
