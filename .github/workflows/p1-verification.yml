@@ -26,7 +26,7 @@ jobs:
       - name: Tests unitaires du suivi direct
         run: python -B scripts/test_suivi_direct.py
       - name: Tests du laboratoire Qwen sans modèle
-        run: python -B scripts/test_qwen_lab.py
+        run: python -B -m unittest discover -s scripts -p 'test_qwen*.py'
       - name: Contrat, régressions et intégration Compose
         env:
           PYTHONUNBUFFERED: '1'

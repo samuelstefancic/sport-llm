@@ -15,7 +15,14 @@ const memory = [];
 const drafts = {};
 const format = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 });
 const clock = new Intl.DateTimeFormat("fr-FR", { timeStyle: "medium" });
-const modes = { reference: "Référence pré-T11", citations: "Variante repas et citations", passages: "Sélection de passages" };
+const modes = {
+  reference: "Référence pré-T11", citations: "Variante repas et citations",
+  passages: "Passages · JSON libre", passages_schema: "Passages · JSON Schema",
+};
+const evaluationLabels = {
+  structure_error: "Échec de structure", citation_error: "Échec de citation",
+  oracle_failed: "Écart avec l’attendu", success: "Succès", exploratory: "Exploratoire", interrupted: "Interrompu",
+};
 const oracle = {
   pass: "F10 réussi",
   fail: "F10 échoué",
@@ -33,6 +40,12 @@ const labels = {
   ollama_response_too_large: "La réponse d’Ollama est trop volumineuse.",
   qwen_not_installed: "Le modèle qwen3:4b est absent d’Ollama.",
   qwen_busy: "Un chargement ou un essai est déjà en cours sur cet écran ou l’instance d’essai.",
+  qwen_storage_unavailable: "Le dossier des jeux ou séries est inaccessible.",
+  qwen_storage_full: "Le dossier a atteint sa limite de 100 fichiers.",
+  qwen_invalid_record: "Vérifiez le nom, les textes, le format des attendus et leurs ancres.",
+  qwen_invalid_id: "L’identifiant est invalide.",
+  qwen_record_not_found: "Le fichier demandé est absent.",
+  qwen_model_changed: "L’empreinte du modèle a changé pendant la série.",
   qwen_disabled: "Le lanceur de l’écran doit activer le laboratoire.",
   qwen_backend_unavailable: "Le service Python du laboratoire est indisponible.",
   qwen_lock_unavailable: "Le verrou du laboratoire est indisponible.",
@@ -44,6 +57,17 @@ let installed = null;
 let busy = false;
 let checking = false;
 let attemptNumber = 0;
+let savedGame = null;
+let f10Case = null;
+let directory = "";
+let checkingGames = false;
+let gameIO = false;
+let seriesAction = false;
+let seriesView = 0;
+const gameForm = field("game-form");
+const gameCases = field("game-cases");
+const gameSelect = field("game-select");
+const seriesSelect = field("series-select");
 
 function node(tag, content, className) {
   const element = document.createElement(tag);
@@ -62,11 +86,17 @@ function errorText(code) {
 }
 
 function buttons() {
-  run.disabled = !config || installed !== true || busy || checking;
+  run.disabled = !config || installed !== true || busy || checking || seriesAction;
   load.disabled = run.disabled;
-  refresh.disabled = busy || checking;
+  refresh.disabled = busy || checking || seriesAction;
   example.disabled = !config;
   reset.disabled = !config;
+  field("game-add-case").disabled = gameCases.childElementCount >= 5;
+  field("game-add-f10").disabled = !f10Case || field("game-add-case").disabled;
+  field("game-save").disabled = gameIO || !gameCases.childElementCount;
+  field("game-open").disabled = gameIO || !gameSelect.value;
+  field("series-open").disabled = !seriesSelect.value || seriesAction;
+  field("series-start").disabled = run.disabled || gameIO || !savedGame;
 }
 
 function setHint() {
@@ -104,7 +134,7 @@ async function checkStatus(announce = true) {
     installed = result.installed;
     if (!config) {
       config = result;
-      prompt.value = config.prompts[mode.value];
+      prompt.value = config.prompts[promptKey()];
       text.value = config.example.text;
       setHint();
     }
@@ -141,7 +171,7 @@ function verdict(value) {
   return value == null ? "Non évalué" : value ? "Oui" : "Non";
 }
 
-function showEvidence(args, result) {
+function showEvidence(args, result, showF10) {
   const evidence = node("div", null, "qwen-source-and-mentions");
   const source = node("div");
   source.append(node("h3", "Déclaration envoyée"), node("p", args.text, "qwen-declaration"));
@@ -153,11 +183,11 @@ function showEvidence(args, result) {
     const entry = node("li");
     const states = { cooked: "cuit", raw: "cru", unknown: "état inconnu" };
     const quantity = item.value == null ? "Quantité inconnue" : item.value + " " + item.unit;
-    const food = item.expected_food ? "Attendu : " + item.expected_food + " · Proposé : " : "";
+    const food = showF10 && item.expected_food ? "Attendu : " + item.expected_food + " · Proposé : " : "";
     entry.append(node("strong", food + quantity + " · " + states[item.state]));
     if (item.quote != null) entry.append(node("p", (item.passage_id ? item.passage_id + " · " : "") + "« " + item.quote + " »"));
     entry.append(node("p", "Citation verbatim " + verdict(item.verbatim).toLowerCase(), "source-note"));
-    if (item.anchor_ok != null) {
+    if (showF10 && item.anchor_ok != null) {
       const criterion = item.expected_food === "riz" ? "Rejet intégral des 150 g" : "Maintien intégral du poulet";
       entry.append(node("p", criterion + " " + verdict(item.anchor_ok).toLowerCase()
         + " · Quantité exacte " + verdict(item.quantity_ok).toLowerCase()
@@ -201,19 +231,28 @@ function download(attempt) {
 }
 
 function attemptCard(attempt, latest) {
-  const { args, result, error, number, date } = attempt;
+  const { args, result, error, number, date, name, evaluation } = attempt;
   const content = node("div");
-  const label = error ? "Essai interrompu" : oracle[result.checks.oracle_f10];
+  const label = evaluation ? evaluationLabels[evaluation.verdict]
+    : error ? "Essai interrompu" : oracle[result.checks.oracle_f10];
   content.append(node("p", "Température " + format.format(args.temperature) + " · Plafond " + args.max_tokens + " jetons", "source-note"));
   if (error) {
     content.append(node("p", error, "feedback error"), expandable("Déclaration envoyée", node("pre", args.text, "qwen-pre")));
   } else {
     const { checks, metrics } = result;
-    content.append(showEvidence(args, result));
+    content.append(showEvidence(args, result, !evaluation));
     content.append(node("p", "JSON valide " + verdict(checks.json).toLowerCase()
       + " · Structure valide " + verdict(checks.structure).toLowerCase()
       + " · Citations verbatim " + verdict(checks.citations).toLowerCase(), "source-note"));
-    if (result.errors.length) {
+    if (evaluation) {
+      content.append(showComparison(evaluation));
+      if (evaluation.verdict === "structure_error" && result.errors[0]) {
+        content.append(node("p", result.done_reason === "length" ? "Plafond de génération atteint." : result.errors[0], "source-note"));
+      }
+      content.append(node("p", "Empreinte du modèle " + (result.model.digest ?? "inconnue")
+        + " · Ollama " + (result.model.ollama_version ?? "version inconnue")
+        + " · Motif d’arrêt " + (result.done_reason ?? "inconnu"), "source-note"));
+    } else if (result.errors.length) {
       const list = node("ul");
       for (const reason of result.errors) list.append(node("li", reason));
       content.append(list);
@@ -235,12 +274,14 @@ function attemptCard(attempt, latest) {
     content.append(expandable("Sortie brute du modèle", node("pre", result.raw || "Sortie vide", "qwen-pre")));
   }
   content.append(expandable("Consigne envoyée", node("pre", args.prompt, "qwen-pre")));
-  const exportButton = node("button", "Télécharger l’essai JSON", "button secondary qwen-export");
-  exportButton.type = "button";
-  exportButton.addEventListener("click", () => download(attempt));
-  content.append(exportButton);
+  if (!evaluation) {
+    const exportButton = node("button", "Télécharger l’essai JSON", "button secondary qwen-export");
+    exportButton.type = "button";
+    exportButton.addEventListener("click", () => download(attempt));
+    content.append(exportButton);
+  }
   const entry = node("li", null, "panel");
-  const details = expandable("Essai " + number + " · " + modes[args.mode] + " · " + label + " · " + clock.format(date), content);
+  const details = expandable((name ?? ("Essai " + number)) + " · " + modes[args.mode] + " · " + label + " · " + clock.format(date), content);
   details.open = latest;
   entry.append(details);
   return entry;
@@ -256,8 +297,7 @@ function addAttempt(args, result, error) {
 form.addEventListener("submit", async event => {
   event.preventDefault();
   if (run.disabled) return;
-  const args = { text: text.value, mode: mode.value, prompt: prompt.value,
-    temperature: temperature.valueAsNumber, max_tokens: tokens.valueAsNumber };
+  const args = { ...settings(), text: text.value };
   const encode = new TextEncoder();
   if (encode.encode(args.text).length > config.limits.text_bytes || encode.encode(args.prompt).length > config.limits.prompt_bytes
       || !args.text.trim() || !args.prompt.trim()) {
@@ -301,13 +341,21 @@ load.addEventListener("click", async () => {
 
 refresh.addEventListener("click", () => checkStatus());
 text.addEventListener("input", setHint);
-prompt.addEventListener("input", () => { drafts[mode.value] = prompt.value; });
+function promptKey() {
+  return mode.value === "passages_schema" ? "passages" : mode.value;
+}
+
+function settings() {
+  return { mode: mode.value, prompt: prompt.value, temperature: temperature.valueAsNumber, max_tokens: tokens.valueAsNumber };
+}
+
+prompt.addEventListener("input", () => { drafts[promptKey()] = prompt.value; });
 mode.addEventListener("change", () => {
-  if (config) prompt.value = drafts[mode.value] ?? config.prompts[mode.value];
+  if (config) prompt.value = drafts[promptKey()] ?? config.prompts[promptKey()];
 });
 reset.addEventListener("click", () => {
-  delete drafts[mode.value];
-  prompt.value = config.prompts[mode.value];
+  delete drafts[promptKey()];
+  prompt.value = config.prompts[promptKey()];
   prompt.focus();
 });
 example.addEventListener("click", () => {
@@ -317,5 +365,261 @@ example.addEventListener("click", () => {
 });
 
 export function openQwenLab() {
-  if (!busy) checkStatus();
+  if (!busy && !seriesAction) checkStatus();
+  refreshRecords();
 }
+
+function showComparison(evaluation) {
+  const panel = node("div");
+  if (!evaluation.differences.length) {
+    if (evaluation.expected === null) {
+      panel.append(node("p", "Aucun attendu renseigné.", "source-note"));
+    }
+    return panel;
+  }
+  const quantity = value => value === null ? "sans quantité" : value.value + " " + value.unit;
+  const states = { cooked: "cuit", raw: "cru", unknown: "état inconnu" };
+  panel.append(node("h3", "Comparaison avec l’attendu du jeu"));
+  const list = node("ol", null, "qwen-mention-list");
+  for (const row of evaluation.differences) {
+    const entry = node("li");
+    const expected = row.expected ? quantity(row.expected.quantity) + " · " + states[row.expected.state] : "mention supplémentaire";
+    const observed = row.observed ? quantity(row.observed.quantity) + " · " + states[row.observed.state] : "mention absente";
+    entry.append(node("p", "Attendu · " + expected), node("p", "Proposé · " + observed));
+    if (row.expected) {
+      entry.append(node("p", "Ancre « " + row.expected.anchor + " » couverte "
+        + verdict(row.anchor_ok).toLowerCase() + " · Quantité exacte " + verdict(row.quantity_ok).toLowerCase()
+        + " · État exact " + verdict(row.state_ok).toLowerCase(), "source-note"));
+    }
+    list.append(entry);
+  }
+  panel.append(list);
+  return panel;
+}
+
+function gameMessage(value = "", error = false) {
+  const output = field("game-feedback");
+  output.textContent = value;
+  output.classList.toggle("error", error);
+}
+
+function fileLink(kind, identifier) {
+  const link = field(kind === "jeux" ? "game-file" : "series-file");
+  link.hidden = !identifier;
+  if (!identifier) return;
+  link.href = "/api/local/qwen/" + kind + "/" + identifier;
+  link.textContent = directory + "/" + kind + "/" + identifier + ".json";
+}
+
+function options(select, ids, empty, selected = select.value) {
+  select.replaceChildren(...(ids.length ? ids : [""]).map(id => {
+    const option = node("option", id || empty);
+    option.value = id;
+    return option;
+  }));
+  if (ids.includes(selected)) select.value = selected;
+}
+
+async function refreshRecords(gameId, seriesId) {
+  if (checkingGames) return;
+  checkingGames = true;
+  try {
+    const [games, histories] = await Promise.all([request("jeux"), request("series")]);
+    f10Case = games.f10;
+    directory = games.directory;
+    field("game-directory").textContent = directory;
+    options(gameSelect, games.ids, "Aucun jeu enregistré", gameId);
+    options(seriesSelect, histories.ids, "Aucune série enregistrée", seriesId);
+  } catch (error) {
+    gameMessage(errorText(error.message), true);
+  } finally {
+    checkingGames = false;
+    buttons();
+  }
+}
+
+let editRevision = 0;
+
+function dirtyGame() {
+  editRevision += 1;
+  savedGame = null;
+  fileLink("jeux", null);
+  buttons();
+}
+
+function caseLabel(label, control) {
+  const wrapper = node("label", label);
+  wrapper.append(control);
+  return wrapper;
+}
+
+function appendCase(data = {}) {
+  if (gameCases.childElementCount >= 5) return;
+  const row = node("fieldset");
+  const name = node("input");
+  name.type = "text";
+  name.maxLength = 100;
+  name.value = data.name ?? "";
+  name.required = true;
+  name.dataset.case = "name";
+  const source = node("textarea");
+  source.rows = 3;
+  source.maxLength = 4096;
+  source.value = data.text ?? "";
+  source.required = true;
+  source.dataset.case = "text";
+  const expected = node("textarea");
+  expected.rows = 5;
+  expected.maxLength = 12000;
+  expected.spellcheck = false;
+  expected.dataset.case = "expected";
+  expected.value = data.expected == null ? "" : JSON.stringify(data.expected, null, 2);
+  expected.placeholder = '[{"anchor":"extrait littéral","state":"unknown","quantity":null}]';
+  const remove = node("button", "Retirer ce cas", "text-button");
+  remove.type = "button";
+  remove.addEventListener("click", () => { row.remove(); dirtyGame(); });
+  row.append(node("legend", "Cas fictif"), caseLabel("Nom du cas", name), caseLabel("Déclaration", source),
+    expandable("Attendu d’extraction facultatif", caseLabel("Mentions ordonnées en JSON", expected)), remove);
+  gameCases.append(row);
+  return name;
+}
+
+function populateGame(identifier, data) {
+  field("game-id").value = identifier ?? "";
+  field("game-name").value = data?.name ?? "";
+  gameCases.replaceChildren();
+  for (const item of data?.cases ?? [{}]) appendCase(item);
+  savedGame = identifier;
+  editRevision += 1;
+  fileLink("jeux", identifier);
+  buttons();
+}
+
+field("game-new").addEventListener("click", () => { populateGame(null, null); gameMessage(); });
+field("game-add-case").addEventListener("click", () => { appendCase()?.focus(); dirtyGame(); });
+field("game-add-f10").addEventListener("click", () => {
+  const initial = gameCases.childElementCount === 1 && [...gameCases.querySelectorAll("input, textarea")].every(input => !input.value);
+  if (initial) gameCases.replaceChildren();
+  appendCase(f10Case)?.focus();
+  dirtyGame();
+});
+gameForm.addEventListener("input", dirtyGame);
+gameSelect.addEventListener("change", buttons);
+seriesSelect.addEventListener("change", buttons);
+
+field("game-open").addEventListener("click", async () => {
+  const identifier = gameSelect.value;
+  const revision = editRevision;
+  gameIO = true;
+  buttons();
+  try {
+    const record = await request("jeux/" + identifier);
+    if (revision === editRevision) {
+      populateGame(identifier, record);
+      gameMessage("Jeu ouvert.");
+    }
+  } catch (error) {
+    gameMessage(errorText(error.message), true);
+  } finally {
+    gameIO = false;
+    buttons();
+  }
+});
+
+gameForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  if (gameIO) return;
+  const identifier = field("game-id").value;
+  const name = field("game-name").value;
+  const revision = editRevision;
+  let cases;
+  try {
+    cases = [...gameCases.children].map(row => {
+      const read = key => row.querySelector('[data-case="' + key + '"]').value;
+      const expected = read("expected");
+      return { name: read("name"), text: read("text"), expected: expected.trim() ? JSON.parse(expected) : null };
+    });
+  } catch {
+    gameMessage("L’attendu doit contenir un tableau JSON valide. Laissez le champ vide pour un cas exploratoire.", true);
+    return;
+  }
+  gameIO = true;
+  buttons();
+  try {
+    const result = await request("jeux/" + identifier, { name, cases });
+    if (revision === editRevision) {
+      savedGame = identifier;
+      fileLink("jeux", identifier);
+    }
+    gameMessage("Jeu enregistré dans " + result.path + ".");
+    await refreshRecords(identifier);
+  } catch (error) {
+    gameMessage(errorText(error.message), true);
+  } finally {
+    gameIO = false;
+    buttons();
+  }
+});
+
+const dateTime = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "medium" });
+
+function renderSeries(receipt, lastProgress) {
+  fileLink("series", receipt.id);
+  const progress = receipt.results.length + "/" + receipt.game.cases.length;
+  const status = { running: "En cours", completed: "Terminée", interrupted: "Interrompue" };
+  const summary = receipt.game.name + " · " + modes[receipt.settings.mode] + " · "
+    + dateTime.format(new Date(receipt.started_at)) + " · " + progress + " · " + status[receipt.status];
+  field("series-summary").textContent = summary + (receipt.error ? " · " + errorText(receipt.error) : "");
+  if (progress !== lastProgress) {
+    field("series-results").replaceChildren(...receipt.results.map((item, index) => attemptCard({
+      args: { ...receipt.settings, text: receipt.game.cases[index].text },
+      result: item.outcome, evaluation: item.evaluation, name: item.name,
+      error: item.error ? errorText(item.error) : null, date: new Date(item.finished_at),
+    }, index === receipt.results.length - 1)));
+  }
+  return progress;
+}
+
+async function watchSeries(identifier) {
+  const view = ++seriesView;
+  let progress;
+  for (;;) {
+    const receipt = await request("series/" + identifier);
+    if (view !== seriesView) return;
+    progress = renderSeries(receipt, progress);
+    if (receipt.status !== "running") return;
+    await new Promise(resolve => window.setTimeout(resolve, 2000));
+    if (view !== seriesView) return;
+  }
+}
+
+field("series-open").addEventListener("click", async () => {
+  try {
+    await watchSeries(seriesSelect.value);
+  } catch (error) {
+    field("series-summary").textContent = errorText(error.message);
+  }
+});
+
+field("series-start").addEventListener("click", async () => {
+  if (field("series-start").disabled) return;
+  if (!mode.reportValidity() || !prompt.reportValidity() || !temperature.reportValidity() || !tokens.reportValidity()) return;
+  seriesAction = true;
+  buttons();
+  gameMessage("Démarrage de la série…");
+  try {
+    const result = await request("series", { ...settings(), game_id: savedGame });
+    gameMessage("Série enregistrée dans " + result.path + ".");
+    field("series-summary").textContent = "Lecture de la progression…";
+    await refreshRecords(savedGame, result.id);
+    await watchSeries(result.id);
+  } catch (error) {
+    gameMessage(errorText(error.message), true);
+  } finally {
+    await checkStatus(false);
+    seriesAction = false;
+    buttons();
+  }
+});
+
+populateGame(null, null);

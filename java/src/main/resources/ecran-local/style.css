@@ -353,3 +353,33 @@ thead th { color: var(--muted); font-size: .75rem; white-space: nowrap; }
   .masthead { flex-wrap: wrap; padding-top: .5rem; }
   nav { width: 100%; min-height: 38px; gap: .9rem; }
 }
+
+.qwen-record-fields, .qwen-record-actions, .qwen-case-list {
+  display: grid;
+  gap: .75rem;
+  margin-block: .85rem;
+}
+.qwen-record-fields { grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
+.qwen-record-actions { display: flex; flex-wrap: wrap; align-items: center; }
+.qwen-record-fields input, .qwen-record-actions select, .qwen-case-list input {
+  padding: .5rem .6rem;
+  border: 1px solid var(--edge);
+  border-radius: .45rem;
+  color: inherit;
+  background: white;
+  font: inherit;
+}
+.qwen-case-list fieldset {
+  min-width: 0;
+  border: 1px solid var(--edge);
+  border-radius: .55rem;
+  padding: .8rem;
+}
+.qwen-case-list fieldset > * { margin-bottom: .6rem; }
+.qwen-case-list label, .qwen-case-list label input, .qwen-record-fields input { display: block; width: 100%; }
+.qwen-record-fields input:focus-visible, .qwen-record-actions select:focus-visible, .qwen-case-list input:focus-visible {
+  outline: 3px solid #3a7c59;
+  outline-offset: 3px;
+}
+.qwen-case-list details summary { cursor: pointer; }
+.qwen-case-list .text-button { margin: 0; }

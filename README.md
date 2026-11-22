@@ -45,22 +45,42 @@ Le profil `ecran-local` ouvre [Laboratoire Qwen](http://127.0.0.1:8113/#laborato
 
 **Actualiser** lit l’installation et la résidence de `qwen3:4b` sur le serveur Ollama déjà disponible à `127.0.0.1:11434`. **Charger le modèle** demande deux minutes de résidence. **Lancer** peut aussi charger le modèle. Le laboratoire utilise uniquement ce modèle installé. L’ouverture de l’onglet consulte l’état. Le démarrage d’Ollama et l’installation du modèle relèvent de l’opérateur. [API Ollama](https://docs.ollama.com/faq#how-can-i-preload-a-model-into-ollama-to-get-faster-response-times)
 
-Pour comparer les trois modes, charger **F10 · rév. 2** puis conserver la température à 0 et le plafond à 256 jetons. Chaque mode permet d’éditer sa consigne :
+Pour comparer les modes, charger **F10 · rév. 2** puis conserver la température à 0 et le plafond à 256 jetons. Chaque mode permet d’éditer sa consigne :
 
 - **Référence pré-T11** reprend la consigne du banc avec le domaine repas.
 - **Variante repas et citations** restreint les instructions à l’extraction alimentaire et conserve les citations libres.
-- **Sélection de passages** propose des identifiants de fragments délimités par la ponctuation forte. Les virgules et points décimaux restent dans les fragments. Python recopie à l’identique un fragment existant pour chaque identifiant rendu. Les quantités, unités et états restent proposés par Qwen.
+- **Sélection de passages · JSON libre** propose des identifiants de fragments délimités par la ponctuation forte. Les virgules et points décimaux restent dans les fragments. Python recopie à l’identique un fragment existant pour chaque identifiant rendu. Les quantités, unités et états restent proposés par Qwen.
+- **Sélection de passages · JSON Schema** reprend les mêmes fragments, la même consigne et les mêmes options. Le champ Ollama `format` reçoit un schéma qui fixe les clés de chaque mention, autorise les identifiants de passages existants et définit les types des valeurs. Tous les passages restent sélectionnables et les valeurs attendues restent dans l’oracle.
 
-Sur le texte fictif exact de la [révision F10](data/dev/cases.json), le contrôle indépendant vérifie l’ordre, les citations contiguës verbatim, les quantités et l’état. Pour le riz, la citation doit inclure le rejet des 150 g. Pour le poulet, elle doit inclure le maintien de 100 g. Toute modification du texte rend cet oracle inapplicable. L’historique garde trois essais dans la mémoire de l’onglet jusqu’au rechargement. Le laboratoire affiche les sorties brutes et les raisons de verdict. **Télécharger l’essai JSON** enregistre explicitement un essai depuis le navigateur. Le fichier contient aussi le modèle, son empreinte et la version Ollama lorsqu’elles sont connues. Le laboratoire n’écrit aucune déclaration, consigne ou sortie dans le journal et ne sauvegarde automatiquement aucun essai.
+Sur le texte fictif exact de la [révision F10](data/dev/cases.json), le contrôle indépendant vérifie l’ordre, les citations contiguës verbatim, les quantités et l’état. Pour le riz, la citation doit inclure le rejet des 150 g. Pour le poulet, elle doit inclure le maintien de 100 g. Toute modification du texte rend cet oracle inapplicable. L’historique des essais individuels garde trois essais dans la mémoire de l’onglet jusqu’au rechargement. Le laboratoire affiche les sorties brutes et les raisons de verdict. **Télécharger l’essai JSON** enregistre explicitement un essai depuis le navigateur. Le fichier contient aussi le modèle, son empreinte et la version Ollama lorsqu’elles sont connues. Les essais individuels restent en mémoire jusqu’au rechargement, avec sauvegarde explicite par téléchargement.
 
-Les deux instances passent par le FastAPI du journal sur 8114 ou 8214. Un verrou commun au checkout sérialise les chargements et les essais de ces deux instances. Les autres clients d’Ollama sont hors de son périmètre. Le corps JSON est limité à 24 Kio, avec 4 Kio de déclaration et 8 Kio de consigne encodées en UTF-8. Le contexte Ollama est de 2 048 jetons. Une entrée longue peut dépasser la fenêtre du modèle. La sortie est limitée à 512 jetons et la réponse HTTP d’Ollama à 128 Kio. Le délai d’un appel de chargement ou de génération à Ollama est de 60 secondes. Au-delà, le laboratoire ferme la connexion locale.
+#### Jeux et séries enregistrés
+
+Dans **Jeux d’essai**, donnez un identifiant et un nom au jeu, puis ajoutez un à cinq cas fictifs. **Ajouter F10 · rév. 2** préremplit le texte et l’attendu du riz corrigé à 100 g et du poulet maintenu à 100 g. Les autres cas se saisissent librement. **Enregistrer le jeu** écrit le JSON dans `.local/qwen-lab/ecran/jeux/<id>.json`, ou dans le dossier `essai/jeux/` sur 8213. **Ouvrir** recharge le fichier après actualisation ou redémarrage. L’identifiant contient au plus 40 lettres minuscules ASCII, chiffres ou tirets et commence et finit par une lettre ou un chiffre.
+
+Pour un cas annoté, ouvrez **Attendu d’extraction facultatif** et saisissez un tableau ordonné. Les ancres reprennent des sous-chaînes littérales, contiguës et sans chevauchement du texte saisi. Les états sont `cooked`, `raw` ou `unknown`. La quantité est `null` en cas d’absence ou un objet avec une valeur et une unité (`g`, `kg`, `ml`, `l`, `portion`). Un champ vide rend le cas exploratoire si la structure et les citations passent. Un tableau vide exprime l’attendu explicite de zéro mention.
+
+```json
+[
+  {"anchor": "quinoa cuit, 120 g et non 180 g", "state": "cooked", "quantity": {"value": 120, "unit": "g"}},
+  {"anchor": "tofu cuit reste à 80 g", "state": "cooked", "quantity": {"value": 80, "unit": "g"}}
+]
+```
+
+Réglez le mode, la consigne, la température et le plafond dans **Préparer un essai**, puis choisissez **Lancer et enregistrer la série**. FastAPI fige la version enregistrée du jeu et les réglages, exécute chaque cas à la suite sous le verrou commun puis compare la sortie à l’attendu du jeu. Ollama reçoit la consigne, le texte ou ses passages et les réglages de génération. Le verdict distingue échec de structure, échec de citation, écart d’attendu, succès et exploration. La comparaison affiche séparément quantité, état et couverture d’ancre. Un échec d’appel est indiqué par **Interrompu**.
+
+L’écran actualise la progression et écrit un reçu atomique à chaque résultat dans `.local/qwen-lab/ecran/series/<id>.json`, ou dans `essai/series/` pour l’instance d’essai. Après interruption du service, **Ouvrir** présente le dernier instantané comme interrompu. Les liens affichés donnent l’URL locale du JSON de chaque jeu ou série, par exemple [liste des jeux](http://127.0.0.1:8113/api/local/qwen/jeux) et [liste des séries](http://127.0.0.1:8113/api/local/qwen/series). Le reçu contient les dates UTC, le jeu, le SHA Git au lancement s’il est disponible, les SHA-256 des sources Python du laboratoire, les réglages et le format transmis, la sortie native et le motif d’arrêt, les métriques disponibles et l’identité Ollama. Chaque attendu renseigné porte un SHA-256 de son JSON UTF-8 compact aux clés triées, avec conservation de l’ordre du tableau.
+
+Le stockage du laboratoire est isolé de PostgreSQL. Chaque instance est limitée à 100 jeux et 100 séries, avec 96 Kio par jeu et 3 Mio par reçu. Une série autorise au plus cinq appels de génération et 2 560 jetons générés demandés.
+
+Les deux instances passent par le FastAPI du journal sur 8114 ou 8214. Un verrou commun au checkout sérialise les chargements et les essais de ces deux instances. Les autres clients d’Ollama sont hors de son périmètre. Le corps JSON d’un essai individuel est limité à 24 Kio, avec 4 Kio de déclaration et 8 Kio de consigne encodées en UTF-8. Le contexte Ollama est de 2 048 jetons. Une entrée longue peut dépasser la fenêtre du modèle. La sortie est limitée à 512 jetons et la réponse HTTP d’Ollama à 128 Kio. Le délai d’un appel de chargement ou de génération à Ollama est de 60 secondes. Au-delà, le laboratoire ferme la connexion locale.
 
 La latence murale mesure l’appel HTTP de FastAPI à Ollama. Le temps Ollama, les compteurs de jetons et le temps de génération viennent de sa réponse. Le débit divise les jetons générés par le temps de génération Ollama. Le pic RSS est le maximum échantillonné toutes les 250 ms environ pour le serveur Ollama qui écoute sur le port 11434 et ses descendants. En cas d’identité incertaine ou de relevé absent, le pic est inconnu. Ce RSS peut compter plusieurs fois des pages partagées, manquer un pic bref et ne fournit aucune occupation GPU distincte. Le PID est identifié avec `/usr/sbin/lsof` et `/bin/ps` quand ces outils fournissent une identité fiable. [Mesures de l’API Ollama](https://docs.ollama.com/api/chat)
 
 Vérifier les garde-fous et l’oracle avec le Python existant. Ces tests simulent Ollama :
 
 ```sh
-"$LLMSPORT_PYTHON" -B scripts/test_qwen_lab.py -v
+"$LLMSPORT_PYTHON" -B -m unittest discover -s scripts -p 'test_qwen*.py' -v
 mvn -o -f java/pom.xml -DskipTests package
 ```
 
