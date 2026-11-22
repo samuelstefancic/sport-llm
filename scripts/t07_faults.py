@@ -17,6 +17,12 @@ def proposal(entry):
     source = {"kind": "user_declaration", "input_id": entry["entry_id"],
               "input_revision": entry["entry_revision"], "text": entry["text"]}
     mention.update(source=source, text=entry["text"])
+    if entry["entry_id"] == "T07-FORGED-GOAL":
+        mention.update(activity="cycling", measures=[
+            {"id": "distance", "unit": "km", "value": value, "source": {**source, "text": fragment}}
+            for value, fragment in ((10, "10 km"), (4.5, "4,5 km"))
+        ])
+        return payload
     distance, duration = mention["measures"]
     distance["source"] = {**source, "text": "5 km"}
     duration["source"] = {**source, "text": "30 min"}

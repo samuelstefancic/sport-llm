@@ -9,6 +9,9 @@ from journal_test import ROOT, build_jar, java_service, journal_db, persisted, r
 from t07_faults import proposal
 
 
+DISTANCE_GOAL = "Sortie à vélo : objectif 10 km, mais j’ai parcouru 4,5 km."
+
+
 def read(path):
     return json.loads((ROOT / path).read_text())
 
@@ -33,6 +36,9 @@ def saved(db, port, entry, activity, *, headers=None):
     assert result["energy_burned"] is None and "report" not in result
     assert persisted(db, "workout", entry_id, 1) == result
     assert request(port, "GET", f"/workouts/{entry_id}/revisions/1") == result
+    declaration = db.execute("SELECT body FROM journal_declaration WHERE entry_id=%s AND entry_revision=1",
+                             (entry_id,)).fetchone()
+    assert declaration == ({**entry, "entry_kind": "workout"},)
     request(port, "GET", f"/meals/{entry_id}/revisions/1", expected=404)
     return result
 
@@ -143,6 +149,107 @@ def verify_faults(db, port):
     print("PASS erreurs du pair Python : dimension, valeur, unité plausible, omission, révision de source ; "
           "HTTP 502, aucune écriture")
 
+    entry = body("T07-FORGED-GOAL", DISTANCE_GOAL)
+    validator.validate(proposal(entry))
+    refused(db, port, entry, 502, "invalid_proposal")
+    assert db.execute("SELECT body FROM journal_declaration WHERE entry_id=%s", (entry["entry_id"],)).fetchone() is None
+    print("PASS objectif réintroduit par le pair Python : HTTP 502, aucune écriture")
+
+
+def verify_distance_goals(db, port):
+    for suffix, declaration, duration in (
+        ("BEFORE", DISTANCE_GOAL, False),
+        ("ORDINARY", "Sortie à vélo : j’ai parcouru 4,5 km.", False),
+        ("AFTER", "Sortie à vélo : j’ai parcouru 4,5 km (objectif de 10 km).", False),
+        ("WITH-DURATION", "Sortie à vélo : objectif : 10 km. Parcours de 4,5 km en 30 min.", True),
+        ("WITH-CHOICES", "Sortie à vélo : objectif 10 km ou 20 km, mais j’ai parcouru 4,5 km.", False),
+        ("WITH-TARGET-PARTS", "Vélo : objectif 10 km et 500 m, mais j’ai parcouru 4,5 km.", False),
+        ("NEGATION", "Sortie à vélo : pas 10 km, j’ai parcouru 4,5 km.", False),
+    ):
+        entry = body(f"T07-DISTANCE-GOAL-{suffix}", declaration)
+        result = saved(db, port, entry, "cycling")
+        known(result, "distance", 4500, "m", entry, "4,5 km")
+        measures = [{"id": "distance", "value": 4.5, "unit": "km", "source": source(entry, "4,5 km")}]
+        if duration:
+            known(result, "duration", 30, "min", entry, "30 min")
+            measures.append({"id": "duration", "value": 30, "unit": "min", "source": source(entry, "30 min")})
+        assert result["measures"] == measures, result["measures"]
+        assert result["clarifications"] == []
+
+    for suffix, declaration in (
+        ("ONLY", "Sortie à vélo : objectif 10 km."),
+        ("CHOICES-ONLY", "Sortie à vélo : objectif 10 km ou 20 km."),
+        ("SHARED-UNIT", "Sortie à vélo : objectif 10 ou 20 km."),
+        ("TARGET-PARTS-ONLY", "Vélo : objectif 10 km puis 500 m."),
+        ("REACHED-SHARED-UNIT", "Vélo : objectif de 1 ou 2 km atteint."),
+        ("NOT-REACHED", "Sortie à vélo : je n’ai pas atteint mon objectif de 10 km."),
+        ("NOT-REACHED-AFTER", "Sortie à vélo : objectif de 10 km pas atteint."),
+        ("NOT-REACHED-COPULA", "Vélo : mon objectif de 10 km n’est pas atteint."),
+        ("REACHED-QUESTION", "Vélo : objectif de 10 km atteint ?"),
+    ):
+        entry = body(f"T07-DISTANCE-GOAL-{suffix}", declaration)
+        result = saved(db, port, entry, "cycling")
+        absent(result, "distance")
+        assert result["measures"] == []
+        assert result["clarifications"] == [{
+            "field": "duration", "reason": "quantity_absent", "question": "Combien de temps a duré la séance ?",
+        }]
+
+    for suffix, declaration, duration in (
+        ("REACHED", "Sortie à vélo : j’ai atteint mon objectif de 10 km.", False),
+        ("REACHED-AFTER", "Sortie à vélo : objectif de 10 km atteint.", False),
+        ("REACHED-WITH-DURATION", "Vélo : objectif de 10 km atteint en 30 min.", True),
+        ("REACHED-COPULA", "Vélo : mon objectif de 10 km est atteint.", False),
+        ("REACHED-ADVERB", "Vélo : j’ai bien atteint mon objectif de 10 km.", False),
+    ):
+        entry = body(f"T07-DISTANCE-GOAL-{suffix}", declaration)
+        result = saved(db, port, entry, "cycling")
+        known(result, "distance", 10000, "m", entry, "10 km")
+        measures = [{"id": "distance", "value": 10, "unit": "km", "source": source(entry, "10 km")}]
+        if duration:
+            known(result, "duration", 30, "min", entry, "30 min")
+            measures.append({"id": "duration", "value": 30, "unit": "min", "source": source(entry, "30 min")})
+        assert result["measures"] == measures, result["measures"]
+        assert result["clarifications"] == []
+
+    for suffix, declaration in (
+        ("REACHED-PARTS-PREFIX", "Vélo : j’ai atteint mon objectif de 1 km et 500 m."),
+        ("REACHED-PARTS-TAIL", "Vélo : objectif de 1 km et 500 m atteint."),
+    ):
+        entry = body(f"T07-DISTANCE-GOAL-{suffix}", declaration)
+        result = saved(db, port, entry, "cycling")
+        known(result, "distance", 1500, "m", entry, "1 km", "500 m")
+        assert result["summary"]["distance"]["operation"] == "sum"
+        assert result["measures"] == [
+            {"id": "distance", "value": 1, "unit": "km", "source": source(entry, "1 km")},
+            {"id": "distance", "value": 500, "unit": "m", "source": source(entry, "500 m")},
+        ]
+        assert result["clarifications"] == []
+
+    entry = body("T07-DISTANCE-GOAL-ACTUAL-SEGMENTS", "Sortie à vélo : objectif 10 km ou 20 km, "
+                 "mais j’ai parcouru 4,5 km puis 500 m.")
+    result = saved(db, port, entry, "cycling")
+    known(result, "distance", 5000, "m", entry, "4,5 km", "500 m")
+    assert result["summary"]["distance"]["operation"] == "sum" and len(result["measures"]) == 2
+    assert result["clarifications"] == []
+
+    for suffix, declaration in (
+        ("DECLARED", "Sortie à vélo : j’ai parcouru 2 km ou 4,5 km."),
+        ("REACHED", "Vélo : objectif de 2 km ou 4,5 km atteint."),
+    ):
+        entry = body(f"T07-DISTANCE-CHOICES-{suffix}", declaration)
+        result = saved(db, port, entry, "cycling")
+        row = result["summary"]["distance"]
+        assert (row["status"], row["value"], row["unit"]) == ("unresolved", None, None), row
+        assert row["sources"] == [source(entry, "2 km"), source(entry, "4,5 km")]
+        assert result["measures"] == [
+            {"id": "distance", "value": 2, "unit": "km", "source": source(entry, "2 km")},
+            {"id": "distance", "value": 4.5, "unit": "km", "source": source(entry, "4,5 km")},
+        ]
+        assert [question["field"] for question in result["clarifications"]] == ["distance"]
+    print("PASS objectif de distance : distance parcourue ou objectif atteint, objectif seul ou non atteint sans total ; "
+          "POST/GET/SQL")
+
 
 def duration_choice(result, entry, branches):
     row = result["summary"]["duration"]
@@ -233,6 +340,7 @@ def verify():
     with journal_db() as (_, db), java_service(db) as (port, python_port, logs):
         with running(uvicorn("app:app", "python", python_port), python_port, logs / "python.log"):
             verify_workouts(db, port)
+            verify_distance_goals(db, port)
             verify_duration_alternatives(db, port)
             verify_measure_notation(db, port)
         with running(uvicorn("t07_faults:app", "scripts", python_port), python_port, logs / "faults.log"):
