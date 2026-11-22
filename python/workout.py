@@ -44,6 +44,14 @@ UNRESOLVED_FIELDS = {
     "load": r"\b(?:r[ée]p[ée]titions?|reps?)\s*,?\s+à\s*$",
 }
 NEGATED = re.compile(r"\b(?:pas|ni|au lieu de)\s*$", re.IGNORECASE)
+DISTANCE_UNIT_SPELLING = "|".join(expression for (field, _), expression in UNIT_PATTERNS.items() if field == "distance")
+LINKED_GOAL_PART = rf"{NUMBER.pattern}(?:\s*(?:{DISTANCE_UNIT_SPELLING})\b)?(?:\s*,\s*|\s+)(?:et|ou|puis)\s+"
+DISTANCE_GOAL_PREFIX = re.compile(
+    r"\b(?P<reached>j['’]ai\s+(?:bien\s+)?atteint\s+(?:mon\s+|l['’]))?objectif(?:\s+de)?\s*:?\s*"
+    rf"(?P<previousParts>(?:{LINKED_GOAL_PART})*+)$",
+    re.IGNORECASE,
+)
+DISTANCE_GOAL_REACHED_TAIL = re.compile(r"\s+(?:est\s+)?atteint\b(?!\s*(?:\?|ou\s+non\b))", re.IGNORECASE)
 
 
 def measure(text, number, source, next_duration_start):
@@ -58,6 +66,12 @@ def measure(text, number, source, next_duration_start):
             field, unit, end = dimension, code, found.end()
             if COMPOUND_UNIT_TAIL.match(text, end):
                 return None
+            if field == "distance":
+                goal = DISTANCE_GOAL_PREFIX.search(prefix)
+                if goal and goal["reached"] is None:
+                    reached = not goal["previousParts"] and DISTANCE_GOAL_REACHED_TAIL.match(text, end)
+                    if not reached:
+                        return None
             break
     if field is None:
         if label := FIELD_LABEL.search(prefix):

@@ -35,6 +35,15 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
     private static final Pattern LIFT_LOAD = pattern("\\b(?:r[ée]p[ée]titions?|reps?)\\s*,?\\s+à\\s*$");
     private static final Pattern ELAPSED_TIME = pattern("\\bpendant\\s*$");
     private static final Pattern NEGATED = pattern("\\b(?:pas|ni|au lieu de)\\s*$");
+    private static final String METERS_SPELLING = "m[èe]tres?|m";
+    private static final String KILOMETERS_SPELLING = "kilom[èe]tres?|km";
+    private static final String LINKED_GOAL_PART = NUMBER.pattern()
+            + "(?:\\s*(?:" + METERS_SPELLING + "|" + KILOMETERS_SPELLING + ")\\b)?"
+            + "(?:\\s*,\\s*|\\s+)(?:et|ou|puis)\\s+";
+    private static final Pattern DISTANCE_GOAL_PREFIX = pattern(
+            "\\b(?<reached>j['’]ai\\s+(?:bien\\s+)?atteint\\s+(?:mon\\s+|l['’]))?objectif(?:\\s+de)?\\s*:?\\s*"
+                    + "(?<previousParts>(?:" + LINKED_GOAL_PART + ")*+)$");
+    private static final Pattern DISTANCE_GOAL_REACHED_TAIL = pattern("\\s+(?:est\\s+)?atteint\\b(?!\\s*(?:\\?|ou\\s+non\\b))");
     private static final Pattern ADDITIVE = pattern("\\s*,?\\s*(?:puis|et)\\s*");
     private static final Pattern ALTERNATIVE = pattern("\\s+ou\\s+");
     private static final Pattern PER_SET = pattern("\\s+de\\s+");
@@ -50,8 +59,8 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
         SECONDS(DURATION, "s", "secondes?|secs?|s"),
         MINUTES(DURATION, "min", "minutes?|mins?"),
         HOURS(DURATION, "h", "heures?|h"),
-        METERS(DISTANCE, "m", "m[èe]tres?|m"),
-        KILOMETERS(DISTANCE, "km", "kilom[èe]tres?|km"),
+        METERS(DISTANCE, "m", METERS_SPELLING),
+        KILOMETERS(DISTANCE, "km", KILOMETERS_SPELLING),
         SET_COUNT(SETS, "count", "s[ée]ries?"),
         REP_COUNT(REPETITIONS, "count", "r[ée]p[ée]titions?|reps?"),
         KILOGRAMS(LOAD, "kg", "kilogrammes?|kilos?|kg");
@@ -132,6 +141,14 @@ record WorkoutCalculator(String text, String activity, List<WorkoutCalculator.Me
                 }
             }
             if (unit != null && COMPOUND_UNIT_TAIL.matcher(text).region(end, text.length()).lookingAt()) continue;
+            if (unit != null && DISTANCE.equals(unit.field)) {
+                var goal = DISTANCE_GOAL_PREFIX.matcher(prefix);
+                if (goal.find() && goal.group("reached") == null) {
+                    boolean reached = goal.group("previousParts").isEmpty()
+                            && DISTANCE_GOAL_REACHED_TAIL.matcher(text).region(end, text.length()).lookingAt();
+                    if (!reached) continue;
+                }
+            }
             numbers.add(new WrittenNumber(number.group(1), number.start(), end, unit, labelledField(prefix)));
         }
         return numbers;
