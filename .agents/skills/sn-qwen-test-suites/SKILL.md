@@ -7,6 +7,8 @@ description: "Créer, relire et figer un jeu de cas fictifs du laboratoire Qwen 
 
 ## Définir les cas avant l’appel
 
+Pour concevoir des cas qui distinguent une extraction correcte d’une erreur plausible, lire le [guide des tests de comportement](../../../documentation/p2/tests-comportement-qwen.md). Il contient le parcours de validation sur 8113 et un jeu versionné.
+
 1. Nommer le comportement à vérifier et choisir un identifiant versionné, par exemple `riz-correction-v1`. Préparer un à cinq cas fictifs. Chaque cas porte un nom et la déclaration exacte qui sera envoyée au modèle.
 2. Écrire l’attendu à partir de la déclaration et de la règle à vérifier. Employer un tableau ordonné de mentions. Chaque mention contient `anchor`, une citation textuelle continue, `state` (`cooked`, `raw` ou `unknown`) et `quantity` (`null` ou un objet `value` et `unit`). Garder l’unité déclarée. Choisir des citations sans chevauchement dans l’ordre du texte. Pour une correction, inclure dans la citation le rejet de l’ancienne valeur.
 3. Le tableau `[]` fixe l’attendu à zéro mention. Le champ laissé vide enregistre `null` et rend le cas exploratoire. Pour un exemple à reproduire à la main, ouvrir [riz-correction-v1.json](assets/riz-correction-v1.json) et reporter le nom, les déclarations et chaque tableau `expected` dans le formulaire.
