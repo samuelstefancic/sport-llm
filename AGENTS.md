@@ -1,5 +1,7 @@
 # llmSport — règles communes
 
+Pour démarrer ou reprendre un lot, suivre le [guide de reprise](documentation/reprise.md). Il indique où vérifier l’état réel, comment attribuer le lot et quelle procédure lire.
+
 ## Projet et responsabilités
 
 - Conserver la progression P0–P7 et l'architecture Angular minimal, Java/Spring Boot, Python/FastAPI interne, PostgreSQL. Le suivi minimal est dans [PROJECT.md](PROJECT.md).
@@ -21,3 +23,4 @@
 - Conserver la progression PyTorch et la comparaison baseline/modèle préentraîné/même modèle adapté ; l'intégration au produit dépend des résultats. MLX-LM n'est pas PyTorch.
 - Utiliser la seule procédure utile dans `.agents/skills/` : `sn-plan-contracts` (attendu), `sn-data-provenance` (origine), `sn-build-and-learn` (exercice/patch), `sn-evaluate-models` (qualité), `sn-benchmark-inference` (ressources/performance), `sn-platform-ops` (exploitation), `sn-review-evidence` (affirmations/preuves). Les procédures détaillées restent dans leurs SKILL.md ; ne pas les invoquer toutes par défaut.
 - Pour une livraison déléguée demandée par l’utilisateur, utiliser `sn-orchestrate-delivery`. Pour une décision de clôture fondée sur une revue indépendante du jalon fusionné, utiliser `sn-review-handoff`.
+- Pour chaque demande de l’utilisateur sur llmSport, le pilote lance en parallèle un vérificateur GPT‑6.2 Sol avec l’effort Low. Il lui donne un contrôle précis, la référence du code et les preuves à lire. Le mandat du vérificateur se termine au contrôle confié.
